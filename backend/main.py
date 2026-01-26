@@ -12,8 +12,12 @@ app = FastAPI(title="Restaurant System API")
 # ==================== CORS ====================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000",
-    "https://frontend-new-mu-one.vercel.app",],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "https://frontend-new-mu-one.vercel.app",
+        "*"  # Tạm thời cho phép tất cả (production nên cụ thể hơn)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
 
