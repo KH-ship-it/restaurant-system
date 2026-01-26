@@ -34,7 +34,7 @@ export default function MenuManagement() {
   const [isSaving, setIsSaving] = useState(false);
 
   // ⚠️ THAY ĐỔI URL NÀY BẰNG NGROK URL CỦA BẠN
-  const API_URL = 'https://downier-winston-theological.ngrok-free.dev/api/menu';
+  const API_URL = 'http://localhost:8000/api/menu'; // Hoặc thay bằng ngrok URL
   
   const [formData, setFormData] = useState<MenuFormData>({
     item_name: '',
@@ -60,8 +60,6 @@ export default function MenuManagement() {
   const loadMenuFromAPI = async () => {
     try {
       setIsLoading(true);
-      console.log('🔍 Loading menu from API...');
-      
       const res = await fetch(`${API_URL}`, {
         method: 'GET',
         headers: {
@@ -72,13 +70,9 @@ export default function MenuManagement() {
         cache: 'no-store'
       });
 
-      console.log('📡 Response status:', res.status);
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const result = await res.json();
-      console.log('✅ Loaded items:', result.data?.length || 0);
-      
       if (result.success && result.data) {
         setMenuItems(result.data);
       }
@@ -165,9 +159,6 @@ export default function MenuManagement() {
       const url = editingId ? `${API_URL}/${editingId}` : `${API_URL}`;
       const method = editingId ? 'PUT' : 'POST';
 
-      console.log(`📤 ${method} request to:`, url);
-      console.log('📦 Payload:', payload);
-
       const res = await fetch(url, {
         method: method,
         headers: {
@@ -178,12 +169,9 @@ export default function MenuManagement() {
         body: JSON.stringify(payload)
       });
 
-      console.log('📡 Response status:', res.status);
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const result = await res.json();
-      console.log('✅ Result:', result);
 
       if (result.success) {
         alert(editingId ? '✅ Cập nhật thành công!' : '✅ Thêm món thành công!');
@@ -217,12 +205,9 @@ export default function MenuManagement() {
         body: JSON.stringify({ status: newStatus })
       });
 
-      console.log('📡 Response status:', res.status);
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const result = await res.json();
-      console.log('✅ Result:', result);
 
       if (result.success) {
         alert(`✅ ${action === 'ẩn' ? 'Đã ẩn món' : 'Đã hiện món'} thành công!`);
@@ -238,8 +223,6 @@ export default function MenuManagement() {
     if (!confirm('⚠️ XÓA VĨNH VIỄN? Hành động này không thể hoàn tác!')) return;
 
     try {
-      console.log(`🗑️ Deleting item ${id}...`);
-      
       const res = await fetch(`${API_URL}/${id}`, {
         method: 'DELETE',
         headers: {
@@ -249,26 +232,17 @@ export default function MenuManagement() {
         }
       });
 
-      console.log('📡 Response status:', res.status);
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('❌ Error response:', errorText);
-        throw new Error(`HTTP ${res.status}: ${errorText}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const result = await res.json();
-      console.log('✅ Delete result:', result);
 
       if (result.success) {
         alert('✅ Xóa vĩnh viễn thành công!');
         await loadMenuFromAPI();
-      } else {
-        throw new Error(result.message || 'Delete failed');
       }
     } catch (error) {
       console.error('❌ Error deleting:', error);
-      alert(`Lỗi xóa món: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert('Lỗi xóa món!');
     }
   };
 
@@ -278,7 +252,7 @@ export default function MenuManagement() {
         <div className="fixed inset-0 bg-[#0d1117] flex items-center justify-center z-50">
           <div className="text-center">
             <div className="text-6xl mb-4 animate-bounce">🍽️</div>
-            <div className="text-[#8b949e] text-lg">Đang tải từ API...</div>
+            <div className="text-[#8b949e] text-lg">Đang tải...</div>
           </div>
         </div>
       ) : (
@@ -296,7 +270,7 @@ export default function MenuManagement() {
             <div className="bg-[#161b22] border-b border-[#30363d] px-8 py-4 flex justify-between items-center">
               <div>
                 <h1 className="text-2xl text-white mb-1">Quản lý Thực đơn</h1>
-                <p className="text-sm text-[#8b949e]">Kết nối API Backend - {menuItems.length} món</p>
+                <p className="text-sm text-[#8b949e]">Quản lý món ăn, giá cả và phân loại</p>
               </div>
               <div className="flex gap-4">
                 <button onClick={loadMenuFromAPI} className="px-5 py-2.5 bg-[#21262d] border border-[#30363d] text-[#c9d1d9] rounded-lg text-sm hover:bg-[#30363d]">
@@ -390,11 +364,7 @@ export default function MenuManagement() {
                             {item.status.toUpperCase() === 'AVAILABLE' ? '👁️' : '👁️‍🗨️'}
                           </button>
                           <button 
-                            onClick={() => {
-                              if (confirm('⚠️ Bạn có chắc muốn xóa món này?')) {
-                                deleteMenuPermanently(item.item_id);
-                              }
-                            }} 
+                            onClick={() => deleteMenuPermanently(item.item_id)} 
                             className="w-8 h-8 rounded-md bg-[#21262d] border border-[#30363d] text-[#8b949e] flex items-center justify-center hover:text-[#f85149] hover:border-[#f85149]"
                             title="Xóa vĩnh viễn"
                           >
