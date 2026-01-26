@@ -549,7 +549,6 @@ export default function MenuManagement() {
                   <div className="mb-5">
                     <label className="block text-sm text-[#8b949e] mb-2 font-medium">Hình ảnh món ăn</label>
                     
-                    {/* Hidden file input */}
                     <input
                       type="file"
                       accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
@@ -559,25 +558,16 @@ export default function MenuManagement() {
                       disabled={isUploading}
                     />
                     
-                    {/* Upload button */}
                     <label
                       htmlFor="imageUploadInput"
-                      className={`flex items-center justify-center gap-3 w-full bg-[#0d1117] border-2 border-dashed border-[#30363d] text-[#8b949e] py-6 px-4 rounded-lg text-sm cursor-pointer hover:border-[#58a6ff] hover:text-[#58a6ff] hover:bg-[#161b22] transition-all ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`flex items-center justify-center gap-2 w-full bg-[#0d1117] border border-[#30363d] text-[#8b949e] py-3 px-4 rounded-lg text-sm cursor-pointer hover:border-[#58a6ff] hover:text-[#58a6ff] transition-all ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      <span className="text-3xl">{isUploading ? '⏳' : '📁'}</span>
-                      <div className="text-center">
-                        <div className="font-medium mb-1">
-                          {isUploading ? 'Đang xử lý ảnh...' : 'Click để chọn ảnh từ máy tính'}
-                        </div>
-                        <div className="text-xs text-[#6e7681]">
-                          Hỗ trợ: JPG, PNG, GIF, WebP (Max 5MB)
-                        </div>
-                      </div>
+                      <span className="text-lg">{isUploading ? '⏳' : '📁'}</span>
+                      <span>{isUploading ? 'Đang tải ảnh...' : 'Chọn ảnh từ máy tính (Max 5MB - Tự động nén)'}</span>
                     </label>
                     
-                    {/* Image preview */}
                     {formData.image_url && (
-                      <div className="relative mt-4 w-full rounded-lg overflow-hidden border-2 border-[#238636] bg-[#0d1117]">
+                      <div className="relative mt-4 w-full rounded-lg overflow-hidden border border-[#30363d] bg-[#0d1117]">
                         <div className="aspect-video w-full">
                           <img 
                             src={formData.image_url} 
@@ -592,38 +582,22 @@ export default function MenuManagement() {
                         <div className="absolute top-2 right-2 flex gap-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              setFormData({...formData, image_url: ''});
-                              // Reset file input
-                              const fileInput = document.getElementById('imageUploadInput') as HTMLInputElement;
-                              if (fileInput) fileInput.value = '';
-                            }}
-                            className="w-9 h-9 rounded-lg bg-[#da3633] hover:bg-[#f85149] border border-[#f85149] text-white flex items-center justify-center transition-all shadow-lg"
-                            title="Xóa ảnh và chọn ảnh khác"
+                            onClick={() => setFormData({...formData, image_url: ''})}
+                            className="w-8 h-8 rounded-md bg-[#161b22]/90 backdrop-blur-sm border border-[#30363d] text-[#f85149] flex items-center justify-center hover:bg-[#21262d] transition-all"
+                            title="Xóa ảnh"
                           >
-                            🗑️
+                            ✕
                           </button>
                         </div>
-                        <div className="p-3 text-xs text-[#3fb950] text-center bg-[#161b22]/95 backdrop-blur-sm border-t border-[#30363d] flex items-center justify-center gap-2">
-                          <span>✅</span>
-                          <span className="font-medium">Ảnh đã được tải lên và tối ưu thành công</span>
+                        <div className="p-2 text-xs text-[#8b949e] text-center bg-[#161b22]/80 backdrop-blur-sm">
+                          ✅ Ảnh đã được nén và tối ưu
                         </div>
                       </div>
                     )}
                     
-                    {/* Info message */}
-                    <div className="mt-3 p-3 bg-[#161b22] border border-[#30363d] rounded-lg">
-                      <div className="text-xs text-[#8b949e] flex items-start gap-2">
-                        <span className="text-base">💡</span>
-                        <div>
-                          <div className="font-medium text-[#c9d1d9] mb-1">Tối ưu hóa tự động:</div>
-                          <ul className="list-disc list-inside space-y-1 text-[#6e7681]">
-                            <li>Ảnh sẽ tự động resize về tối đa 800x800px</li>
-                            <li>Nén với chất lượng 70% để giảm dung lượng</li>
-                            <li>Lưu dạng Base64 vào database</li>
-                          </ul>
-                        </div>
-                      </div>
+                    <div className="mt-2 text-xs text-[#8b949e] flex items-start gap-2">
+                      <span>💡</span>
+                      <span>Ảnh sẽ tự động được nén xuống 800x800px với chất lượng 70% để tối ưu database</span>
                     </div>
                   </div>
 
