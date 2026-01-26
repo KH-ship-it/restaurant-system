@@ -4,10 +4,6 @@ from config.database import get_db
 from models.schemas import TableCreate, TableUpdate
 from middleware.auth import verify_token, require_role
 from typing import Optional
-import os
-CUSTOMER_APP_URL = os.getenv("BASE_URL")
-
-
 router = APIRouter(prefix="/api/tables", tags=["Table Management"])
 
 @router.get("")
@@ -117,29 +113,4 @@ def delete_table(
         conn.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=str(e))
-        @router.get("/{table_id}/qr")
-def get_table_qr_link(
-    table_id: int,
-    conn=Depends(get_db)
-):
-    """
-    Public API – sinh link QR cho khách (không cần login)
-    """
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT table_id FROM dining_tables WHERE table_id = %s",
-        (table_id,)
-    )
-    table = cursor.fetchone()
-    cursor.close()
-
-    if not table:
-        raise HTTPException(status_code=404, detail="Table not found")
-
-    qr_url = f"{CUSTOMER_APP_URL}/goimon?table={table_id}"
-
-    return {
-        "success": True,
-        "table_id": table_id,
-        "qr_url": qr_url
-    }
+        
