@@ -1,0 +1,70 @@
+{
+  "Login": {
+    "title": "Đăng nhập",
+    "title2": "Vui lòng nhập thông tin để tiếp tục",
+    "username": "Tên đăng nhập",
+    "usernamePlaceholder": "Nhập tên đăng nhập",
+    "password": "Mật khẩu",
+    "passwordPlaceholder": "Nhập mật khẩu",
+    "rememberMe": "Ghi nhớ đăng nhập",
+    "forgotPassword": "Quên mật khẩu?",
+    "loginButton": "Đăng nhập",
+    "loggingIn": "Đang đăng nhập...",
+    "noAccount": "Chưa có tài khoản?",
+    "registerNow": "Đăng ký ngay",
+    "demoAccounts": "",
+    "loginError": "Đăng nhập thất bại. Vui lòng thử lại."
+  },
+  "CustomerMenu": {
+    "header": {
+      "home": "Trang chủ",
+      "menu": "Thực đơn",
+      "order": "Đơn hàng",
+      "logout": "Đăng xuất"
+    },
+    "title": "Menu quán",
+    "table": "Bàn",
+    "itemsAvailable": "món có sẵn",
+    "noItems": "Chưa có món nào trong thực đơn",
+    "comeBackLater": "Vui lòng quay lại sau",
+    "loading": "Đang tải thực đơn...",
+    "cart": {
+      "title": "Đặt hàng",
+      "empty": "Giỏ hàng trống",
+      "addItems": "Thêm món vào giỏ để đặt hàng",
+      "items": "Số món:",
+      "total": "Tổng cộng:",
+      "checkout": "Đặt hàng",
+      "itemCount": "món"
+    },
+    "payment": {
+      "title": "Xác nhận đặt món",
+      "subtitle": "Kiểm tra thông tin và xác nhận đơn hàng",
+      "orderId": "Mã đơn hàng:",
+      "tableNumber": "Số bàn:",
+      "bank": "Ngân hàng:",
+      "accountNumber": "Số tài khoản:",
+      "accountName": "Chủ tài khoản:",
+      "amount": "Số tiền:",
+      "orderDetails": "Chi tiết đơn hàng:",
+      "notes": "Lưu ý:",
+      "note1": "Đơn hàng sẽ được gửi đến nhân viên ngay lập tức",
+      "note2": "Thời gian chuẩn bị: 10-15 phút",
+      "note3": "Bạn có thể quét QR để thanh toán hoặc thanh toán khi nhận món",
+      "confirm": "XÁC NHẬN ĐẶT MÓN",
+      "cancel": "Hủy"
+    },
+    "tableModal": {
+      "title": "Chọn số bàn",
+      "subtitle": "Vui lòng chọn số bàn của bạn",
+      "close": "Đóng"
+    },
+    "alerts": {
+      "cartEmpty": "Giỏ hàng trống!",
+      "enterName": "Vui lòng nhập tên của bạn:",
+      "defaultName": "Khách hàng",
+      "orderSuccess": "Đặt hàng thành công! Cảm ơn bạn đã đặt hàng tại Haven!",
+      "orderError": "Có lỗi xảy ra khi đặt hàng. Vui lòng thử lại!"
+    }
+  }
+}

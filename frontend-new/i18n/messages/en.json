@@ -1,0 +1,69 @@
+{
+  "Login": {
+    "title": "Login",
+    "title2": "Please enter your information to continue",
+    "username": "Username",
+    "usernamePlaceholder": "Enter username",
+    "password": "Password",
+    "passwordPlaceholder": "Enter password",
+    "rememberMe": "Remember me",
+    "forgotPassword": "Forgot password?",
+    "loginButton": "Login",
+    "loggingIn": "Logging in...",
+    "noAccount": "Don't have an account?",
+    "registerNow": "Register now",
+    "demoAccounts": "Demo accounts:"
+  },
+  "CustomerMenu": {
+    "header": {
+      "home": "Home",
+      "menu": "Menu",
+      "order": "Orders",
+      "logout": "Logout"
+    },
+    "title": "Restaurant Menu",
+    "table": "Table",
+    "itemsAvailable": "items available",
+    "noItems": "No items in the menu yet",
+    "comeBackLater": "Please come back later",
+    "loading": "Loading menu...",
+    "cart": {
+      "title": "Order",
+      "empty": "Cart is empty",
+      "addItems": "Add items to cart to order",
+      "items": "Items:",
+      "total": "Total:",
+      "checkout": "Order",
+      "itemCount": "items"
+    },
+    "payment": {
+      "title": "Confirm Order",
+      "subtitle": "Review information and confirm your order",
+      "orderId": "Order ID:",
+      "tableNumber": "Table:",
+      "bank": "Bank:",
+      "accountNumber": "Account Number:",
+      "accountName": "Account Name:",
+      "amount": "Amount:",
+      "orderDetails": "Order Details:",
+      "notes": "Notes:",
+      "note1": "Order will be sent to staff immediately",
+      "note2": "Preparation time: 10-15 minutes",
+      "note3": "You can scan QR to pay or pay when receiving order",
+      "confirm": "CONFIRM ORDER",
+      "cancel": "Cancel"
+    },
+    "tableModal": {
+      "title": "Select Table Number",
+      "subtitle": "Please select your table number",
+      "close": "Close"
+    },
+    "alerts": {
+      "cartEmpty": "Cart is empty!",
+      "enterName": "Please enter your name:",
+      "defaultName": "Customer",
+      "orderSuccess": "Order successful! Thank you for ordering at Haven!",
+      "orderError": "An error occurred while placing order. Please try again!"
+    }
+  }
+}
