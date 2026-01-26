@@ -632,11 +632,8 @@ export default function MenuManagement() {
                       <div className="text-xs text-[#8b949e] flex items-start gap-2">
                         <span className="text-base">💡</span>
                         <div>
-                          <div className="font-medium text-[#c9d1d9] mb-1">Tối ưu hóa tự động:</div>
+                          <div className="font-medium text-[#c9d1d9] mb-1"></div>
                           <ul className="list-disc list-inside space-y-1 text-[#6e7681]">
-                            <li>Ảnh sẽ tự động resize về tối đa 800x800px</li>
-                            <li>Nén với chất lượng 70% để giảm dung lượng</li>
-                            <li>Lưu dạng Base64 vào database</li>
                           </ul>
                         </div>
                       </div>
