@@ -574,7 +574,7 @@ export default function MenuManagement() {
                       id="imageUploadInput"
                       disabled={isUploading}
                     />
-                    
+                   
                     {/* Upload button */}
                     <label
                       htmlFor="imageUploadInput"
