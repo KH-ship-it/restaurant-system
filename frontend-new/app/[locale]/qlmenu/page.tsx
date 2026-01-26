@@ -138,6 +138,24 @@ export default function MenuManagement() {
     setIsModalOpen(true);
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Kiểm tra kích thước file (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Kích thước ảnh quá lớn! Vui lòng chọn ảnh dưới 2MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setFormData({...formData, image_url: base64String});
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!formData.item_name || !formData.category_id || !formData.price || !formData.description) {
       alert('Vui lòng điền đầy đủ thông tin!');
@@ -432,10 +450,39 @@ export default function MenuManagement() {
                   </div>
 
                   <div className="mb-5">
-                    <label className="block text-sm text-[#8b949e] mb-2 font-medium">URL hình ảnh</label>
-                    <input type="text" value={formData.image_url} onChange={(e) => setFormData({...formData, image_url: e.target.value})} className="w-full bg-[#0d1117] border border-[#30363d] text-[#c9d1d9] py-2.5 px-4 rounded-lg text-sm focus:outline-none focus:border-[#58a6ff]" placeholder="https://..." />
+                    <label className="block text-sm text-[#8b949e] mb-2 font-medium">Hình ảnh món ăn</label>
+                    
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      id="imageUploadInput"
+                    />
+                    
+                    <label
+                      htmlFor="imageUploadInput"
+                      className="flex items-center justify-center gap-2 w-full bg-[#0d1117] border border-[#30363d] text-[#8b949e] py-2.5 px-4 rounded-lg text-sm cursor-pointer hover:border-[#58a6ff] hover:text-[#58a6ff] transition-all"
+                    >
+                      📁 Chọn ảnh từ máy (Max 2MB)
+                    </label>
+                    
                     {formData.image_url && (
-                      <img src={formData.image_url} alt="Preview" className="mt-3 w-full h-48 object-cover rounded-lg" onError={(e) => (e.currentTarget.src = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400')} />
+                      <div className="relative mt-3 w-full h-48 rounded-lg overflow-hidden border border-[#30363d]">
+                        <img 
+                          src={formData.image_url} 
+                          alt="Preview" 
+                          className="w-full h-full object-cover" 
+                          onError={(e) => (e.currentTarget.src = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400')} 
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setFormData({...formData, image_url: ''})}
+                          className="absolute top-2 right-2 w-8 h-8 rounded-md bg-[#161b22]/90 border border-[#30363d] text-[#f85149] flex items-center justify-center hover:bg-[#21262d] transition-all"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     )}
                   </div>
 
