@@ -32,9 +32,10 @@ export default function MenuManagement() {
   const [isLoading, setIsLoading] = useState(true);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
-  // ⚠️ THAY ĐỔI URL NÀY BẰNG NGROK URL CỦA BẠN
-  const API_URL = 'http://localhost:8000/api/menu'; // Hoặc thay bằng ngrok URL
+  // ⚠️ QUAN TRỌNG: Thay URL này bằng server thực tế của bạn
+  const API_URL = 'https://1bb2097ca7be94c8.vn-brvt-1.gateway.scg.vng.cloud/api/menu';
   
   const [formData, setFormData] = useState<MenuFormData>({
     item_name: '',
@@ -60,25 +61,32 @@ export default function MenuManagement() {
   const loadMenuFromAPI = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`${API_URL}`, {
+      console.log('🔄 Loading menu from:', API_URL);
+      
+      const res = await fetch(API_URL, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-          'User-Agent': 'Mozilla/5.0',
-        },
-        cache: 'no-store'
+        }
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      console.log('📡 Response status:', res.status);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
 
       const result = await res.json();
+      console.log('✅ Menu loaded:', result);
+
       if (result.success && result.data) {
         setMenuItems(result.data);
+      } else {
+        throw new Error('Invalid response format');
       }
     } catch (error) {
       console.error('❌ Error loading menu:', error);
-      alert('Lỗi tải menu từ server!');
+      alert(`Lỗi tải menu: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -138,27 +146,109 @@ export default function MenuManagement() {
     setIsModalOpen(true);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Kiểm tra kích thước file (max 2MB)
-      if (file.size > 2 * 1024 * 1024) {
-        alert('Kích thước ảnh quá lớn! Vui lòng chọn ảnh dưới 2MB');
-        return;
-      }
-
+  // ✅ HÀM NÉN ẢNH TỰ ĐỘNG
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        setFormData({...formData, image_url: base64String});
+      
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          // Tạo canvas để resize
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          if (!ctx) {
+            reject(new Error('Canvas not supported'));
+            return;
+          }
+
+          // Resize về max width/height = 800px (giữ tỷ lệ)
+          let width = img.width;
+          let height = img.height;
+          const maxSize = 800;
+
+          if (width > height) {
+            if (width > maxSize) {
+              height = (height * maxSize) / width;
+              width = maxSize;
+            }
+          } else {
+            if (height > maxSize) {
+              width = (width * maxSize) / height;
+              height = maxSize;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          // Vẽ ảnh lên canvas
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Nén với quality 0.7 (70%)
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          
+          console.log('📊 Image compressed:', {
+            original: `${(file.size / 1024).toFixed(2)} KB`,
+            compressed: `${(compressedBase64.length / 1024).toFixed(2)} KB`,
+            dimensions: `${width}x${height}`
+          });
+
+          resolve(compressedBase64);
+        };
+        
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = e.target?.result as string;
       };
+      
+      reader.onerror = () => reject(new Error('Failed to read file'));
       reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Kiểm tra loại file
+    if (!file.type.startsWith('image/')) {
+      alert('❌ Vui lòng chọn file ảnh (JPG, PNG, GIF...)');
+      return;
+    }
+
+    // Kiểm tra kích thước file (max 5MB trước khi nén)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('❌ Kích thước ảnh quá lớn! Vui lòng chọn ảnh dưới 5MB');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      console.log('📤 Uploading image:', file.name);
+
+      // Nén ảnh tự động
+      const compressedBase64 = await compressImage(file);
+      
+      setFormData({...formData, image_url: compressedBase64});
+      console.log('✅ Image uploaded and compressed successfully');
+      
+    } catch (error) {
+      console.error('❌ Error uploading image:', error);
+      alert('Lỗi tải ảnh! Vui lòng thử lại');
+    } finally {
+      setIsUploading(false);
     }
   };
 
   const handleSubmit = async () => {
     if (!formData.item_name || !formData.category_id || !formData.price || !formData.description) {
-      alert('Vui lòng điền đầy đủ thông tin!');
+      alert('❌ Vui lòng điền đầy đủ thông tin bắt buộc!');
+      return;
+    }
+
+    if (parseFloat(formData.price) <= 0) {
+      alert('❌ Giá phải lớn hơn 0!');
       return;
     }
 
@@ -167,38 +257,49 @@ export default function MenuManagement() {
     try {
       const payload = {
         category_id: parseInt(formData.category_id),
-        item_name: formData.item_name,
-        description: formData.description,
+        item_name: formData.item_name.trim(),
+        description: formData.description.trim(),
         price: parseFloat(formData.price),
         image_url: formData.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400',
         status: formData.status
       };
 
-      const url = editingId ? `${API_URL}/${editingId}` : `${API_URL}`;
+      console.log('📤 Sending payload:', { 
+        ...payload, 
+        image_url: payload.image_url.substring(0, 100) + '... (' + payload.image_url.length + ' chars)'
+      });
+
+      const url = editingId ? `${API_URL}/${editingId}` : API_URL;
       const method = editingId ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
         method: method,
         headers: {
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-          'User-Agent': 'Mozilla/5.0',
         },
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      console.log('📡 Response status:', res.status);
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errorText}`);
+      }
 
       const result = await res.json();
+      console.log('✅ Save result:', result);
 
       if (result.success) {
-        alert(editingId ? '✅ Cập nhật thành công!' : '✅ Thêm món thành công!');
+        alert(editingId ? '✅ Cập nhật món thành công!' : '✅ Thêm món mới thành công!');
         setIsModalOpen(false);
         await loadMenuFromAPI();
+      } else {
+        throw new Error(result.message || 'Unknown error');
       }
     } catch (error) {
       console.error('❌ Error saving:', error);
-      alert('Lỗi lưu món!');
+      alert(`Lỗi lưu món: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
@@ -217,8 +318,6 @@ export default function MenuManagement() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-          'User-Agent': 'Mozilla/5.0',
         },
         body: JSON.stringify({ status: newStatus })
       });
@@ -245,8 +344,6 @@ export default function MenuManagement() {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-          'User-Agent': 'Mozilla/5.0',
         }
       });
 
@@ -454,41 +551,59 @@ export default function MenuManagement() {
                     
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
                       onChange={handleImageUpload}
                       className="hidden"
                       id="imageUploadInput"
+                      disabled={isUploading}
                     />
                     
                     <label
                       htmlFor="imageUploadInput"
-                      className="flex items-center justify-center gap-2 w-full bg-[#0d1117] border border-[#30363d] text-[#8b949e] py-2.5 px-4 rounded-lg text-sm cursor-pointer hover:border-[#58a6ff] hover:text-[#58a6ff] transition-all"
+                      className={`flex items-center justify-center gap-2 w-full bg-[#0d1117] border border-[#30363d] text-[#8b949e] py-3 px-4 rounded-lg text-sm cursor-pointer hover:border-[#58a6ff] hover:text-[#58a6ff] transition-all ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      📁 Chọn ảnh từ máy (Max 2MB)
+                      <span className="text-lg">{isUploading ? '⏳' : '📁'}</span>
+                      <span>{isUploading ? 'Đang tải ảnh...' : 'Chọn ảnh từ máy tính (Max 5MB - Tự động nén)'}</span>
                     </label>
                     
                     {formData.image_url && (
-                      <div className="relative mt-3 w-full h-48 rounded-lg overflow-hidden border border-[#30363d]">
-                        <img 
-                          src={formData.image_url} 
-                          alt="Preview" 
-                          className="w-full h-full object-cover" 
-                          onError={(e) => (e.currentTarget.src = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400')} 
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setFormData({...formData, image_url: ''})}
-                          className="absolute top-2 right-2 w-8 h-8 rounded-md bg-[#161b22]/90 border border-[#30363d] text-[#f85149] flex items-center justify-center hover:bg-[#21262d] transition-all"
-                        >
-                          ✕
-                        </button>
+                      <div className="relative mt-4 w-full rounded-lg overflow-hidden border border-[#30363d] bg-[#0d1117]">
+                        <div className="aspect-video w-full">
+                          <img 
+                            src={formData.image_url} 
+                            alt="Preview" 
+                            className="w-full h-full object-cover" 
+                            onError={(e) => {
+                              console.error('Image load error');
+                              e.currentTarget.src = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
+                            }} 
+                          />
+                        </div>
+                        <div className="absolute top-2 right-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFormData({...formData, image_url: ''})}
+                            className="w-8 h-8 rounded-md bg-[#161b22]/90 backdrop-blur-sm border border-[#30363d] text-[#f85149] flex items-center justify-center hover:bg-[#21262d] transition-all"
+                            title="Xóa ảnh"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="p-2 text-xs text-[#8b949e] text-center bg-[#161b22]/80 backdrop-blur-sm">
+                          ✅ Ảnh đã được nén và tối ưu
+                        </div>
                       </div>
                     )}
+                    
+                    <div className="mt-2 text-xs text-[#8b949e] flex items-start gap-2">
+                      <span>💡</span>
+                      <span>Ảnh sẽ tự động được nén xuống 800x800px với chất lượng 70% để tối ưu database</span>
+                    </div>
                   </div>
 
                   <div className="flex gap-2.5 justify-end pt-5 border-t border-[#30363d]">
-                    <button onClick={() => setIsModalOpen(false)} disabled={isSaving} className="px-5 py-2.5 bg-[#21262d] border border-[#30363d] text-[#c9d1d9] rounded-lg text-sm hover:bg-[#30363d]">Hủy</button>
-                    <button onClick={handleSubmit} disabled={isSaving} className="px-5 py-2.5 bg-[#238636] text-white rounded-lg text-sm font-medium hover:bg-[#2ea043] disabled:opacity-50">
+                    <button onClick={() => setIsModalOpen(false)} disabled={isSaving || isUploading} className="px-5 py-2.5 bg-[#21262d] border border-[#30363d] text-[#c9d1d9] rounded-lg text-sm hover:bg-[#30363d] disabled:opacity-50">Hủy</button>
+                    <button onClick={handleSubmit} disabled={isSaving || isUploading} className="px-5 py-2.5 bg-[#238636] text-white rounded-lg text-sm font-medium hover:bg-[#2ea043] disabled:opacity-50">
                       {isSaving ? 'Đang lưu...' : (editingId ? 'Cập nhật' : 'Thêm món')}
                     </button>
                   </div>
