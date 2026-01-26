@@ -1,130 +1,96 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
 from config.database import get_db
 from models.schemas import MenuItemCreate, MenuItemUpdate
 from typing import Optional
 from psycopg2.extras import RealDictCursor
-import traceback
 
 router = APIRouter(prefix="/api/menu", tags=["Menu Management"])
 
 
-# ✅ GET ALL MENU - Luôn trả về JSON
+# ✅ GET ALL MENU (ADMIN)
 @router.get("")
-async def get_menu_items(
+def get_menu_items(
     category: Optional[str] = None,
     status_filter: Optional[str] = None,
     search: Optional[str] = None,
     conn=Depends(get_db)
 ):
-    """Get all menu items - Always returns JSON"""
-    try:
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        query = """
-            SELECT 
-                m.item_id,
-                m.category_id,
-                m.item_name,
-                m.description,
-                m.price,
-                m.image_url,
-                m.status,
-                m.created_at,
-                m.updated_at,
-                c.category_name
-            FROM menu_items m
-            LEFT JOIN categories c ON m.category_id = c.category_id
-            WHERE 1=1
-        """
-        params = []
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    query = """
+        SELECT 
+            m.item_id,
+            m.category_id,
+            m.item_name,
+            m.description,
+            m.price,
+            m.image_url,
+            m.status,
+            m.created_at,
+            m.updated_at,
+            c.category_name
+        FROM menu_items m
+        LEFT JOIN categories c ON m.category_id = c.category_id
+        WHERE 1=1
+    """
+    params = []
 
-        if category:
-            query += " AND c.category_name = %s"
-            params.append(category)
+    if category:
+        query += " AND c.category_name = %s"
+        params.append(category)
 
-        if status_filter:
-            query += " AND UPPER(m.status) = %s"
-            params.append(status_filter.upper())
+    if status_filter:
+        query += " AND UPPER(m.status) = %s"
+        params.append(status_filter.upper())
 
-        if search:
-            query += " AND (m.item_name ILIKE %s OR m.description ILIKE %s)"
-            params.extend([f"%{search}%", f"%{search}%"])
+    if search:
+        query += " AND (m.item_name ILIKE %s OR m.description ILIKE %s)"
+        params.extend([f"%{search}%", f"%{search}%"])
 
-        query += " ORDER BY m.item_name"
+    query += " ORDER BY m.item_name"
 
-        cursor.execute(query, params)
-        items = cursor.fetchall()
-        cursor.close()
+    cursor.execute(query, params)
+    items = cursor.fetchall()
+    cursor.close()
 
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "count": len(items),
-                "data": items
-            }
-        )
-    except Exception as e:
-        print(f"❌ Error in get_menu_items: {str(e)}")
-        print(traceback.format_exc())
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": str(e),
-                "data": []
-            }
-        )
+    return {
+        "success": True,
+        "count": len(items),
+        "data": items
+    }
 
 
-# ✅ GET PUBLIC MENU
+# ✅ GET PUBLIC MENU (CUSTOMER)
 @router.get("/public")
-async def get_public_menu_items(conn=Depends(get_db)):
-    """Get available menu items for customers"""
-    try:
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        query = """
-            SELECT 
-                m.item_id,
-                m.item_name,
-                m.description,
-                m.price,
-                m.image_url,
-                m.category_id,
-                c.category_name
-            FROM menu_items m
-            LEFT JOIN categories c ON m.category_id = c.category_id
-            WHERE UPPER(m.status) = 'AVAILABLE'
-            ORDER BY m.item_name
-        """
-        cursor.execute(query)
-        items = cursor.fetchall()
-        cursor.close()
+def get_public_menu_items(conn=Depends(get_db)):
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    query = """
+        SELECT 
+            m.item_id,
+            m.item_name,
+            m.description,
+            m.price,
+            m.image_url,
+            m.category_id,
+            c.category_name
+        FROM menu_items m
+        LEFT JOIN categories c ON m.category_id = c.category_id
+        WHERE UPPER(m.status) = 'AVAILABLE'
+        ORDER BY m.item_name
+    """
+    cursor.execute(query)
+    items = cursor.fetchall()
+    cursor.close()
 
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "count": len(items),
-                "data": items
-            }
-        )
-    except Exception as e:
-        print(f"❌ Error in get_public_menu: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": str(e),
-                "data": []
-            }
-        )
+    return {
+        "success": True,
+        "count": len(items),
+        "data": items
+    }
 
 
 # ✅ CREATE MENU ITEM
 @router.post("")
-async def create_menu_item(item: MenuItemCreate, conn=Depends(get_db)):
-    """Create new menu item"""
+def create_menu_item(item: MenuItemCreate, conn=Depends(get_db)):
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
         status_value = "AVAILABLE"
@@ -149,44 +115,28 @@ async def create_menu_item(item: MenuItemCreate, conn=Depends(get_db)):
         conn.commit()
         cursor.close()
 
-        return JSONResponse(
-            status_code=201,
-            content={
-                "success": True,
-                "message": "Menu item created successfully",
-                "data": new_item
-            }
-        )
+        return {
+            "success": True,
+            "message": "Menu item created successfully",
+            "data": new_item
+        }
 
     except Exception as e:
         conn.rollback()
         cursor.close()
         print(f"🔥 CREATE ERROR: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": str(e)
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ✅ UPDATE MENU ITEM
 @router.put("/{item_id}")
-async def update_menu_item(item_id: int, item: MenuItemUpdate, conn=Depends(get_db)):
-    """Update menu item"""
+def update_menu_item(item_id: int, item: MenuItemUpdate, conn=Depends(get_db)):
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cursor.execute("SELECT * FROM menu_items WHERE item_id = %s", (item_id,))
         if not cursor.fetchone():
             cursor.close()
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "success": False,
-                    "error": "Menu item not found"
-                }
-            )
+            raise HTTPException(status_code=404, detail="Menu item not found")
 
         update_fields = []
         params = []
@@ -197,13 +147,7 @@ async def update_menu_item(item_id: int, item: MenuItemUpdate, conn=Depends(get_
 
         if not update_fields:
             cursor.close()
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "success": False,
-                    "error": "No fields to update"
-                }
-            )
+            raise HTTPException(status_code=400, detail="No fields to update")
 
         update_fields.append("updated_at = NOW()")
         params.append(item_id)
@@ -220,65 +164,44 @@ async def update_menu_item(item_id: int, item: MenuItemUpdate, conn=Depends(get_
         conn.commit()
         cursor.close()
 
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "message": "Menu item updated",
-                "data": updated_item
-            }
-        )
+        return {
+            "success": True,
+            "message": "Menu item updated",
+            "data": updated_item
+        }
 
+    except HTTPException:
+        raise
     except Exception as e:
         conn.rollback()
         cursor.close()
         print(f"🔥 UPDATE ERROR: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": str(e)
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ✅ DELETE MENU ITEM
 @router.delete("/{item_id}")
-async def delete_menu_item(item_id: int, conn=Depends(get_db)):
-    """Delete menu item"""
+def delete_menu_item(item_id: int, conn=Depends(get_db)):
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT 1 FROM menu_items WHERE item_id = %s", (item_id,))
         if not cursor.fetchone():
             cursor.close()
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "success": False,
-                    "error": "Menu item not found"
-                }
-            )
+            raise HTTPException(status_code=404, detail="Menu item not found")
 
         cursor.execute("DELETE FROM menu_items WHERE item_id = %s", (item_id,))
         conn.commit()
         cursor.close()
 
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "message": f"Menu item {item_id} deleted"
-            }
-        )
+        return {
+            "success": True,
+            "message": f"Menu item {item_id} deleted"
+        }
 
+    except HTTPException:
+        raise
     except Exception as e:
         conn.rollback()
         cursor.close()
         print(f"🔥 DELETE ERROR: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": str(e)
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))

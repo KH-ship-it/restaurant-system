@@ -1,86 +1,50 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import traceback
+from dotenv import load_dotenv
+import os
 
-app = FastAPI(title="Restaurant API", version="1.0.0")
+# Load env
+load_dotenv()
 
-# ✅ CRITICAL: CORS Configuration - PHẢI ĐẶT TRƯỚC KHI IMPORT ROUTES
+# Create app
+app = FastAPI(title="Restaurant System API")
+
+# ==================== CORS ====================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://restaurant-system-ivory.vercel.app",
-        "https://downier-winston-theological.ngrok-free.dev",
         "http://localhost:3000",
-        "http://localhost:3001",
-        "*"  # Allow all (chỉ dùng cho development)
+        "http://localhost:8000",
+        "https://frontend-new-mu-one.vercel.app",
+        "*"  # Tạm thời cho phép tất cả (production nên cụ thể hơn)
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
+
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
-# ✅ CRITICAL: Add exception handler to return JSON instead of HTML
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Ensure all errors return JSON, not HTML"""
-    return JSONResponse(
-        status_code=500,
-        content={
-            "success": False,
-            "error": str(exc),
-            "detail": traceback.format_exc()
-        }
-    )
+# ==================== Import routers ====================
+from routes.auth import router as auth_router
+from routes.menu import router as menu_router
+from routes.order import router as order_router
+from routes.table import router as table_router
+from routes.employee import router as employee_router
+from routes.kitchen import router as kitchen_router
+from routes.dashboard import router as dashboard_router
+from routes.cashier import router as cashier_router
 
-# Health check endpoint
+# ==================== Include routers ====================
+app.include_router(auth_router)
+app.include_router(menu_router)
+app.include_router(order_router)
+app.include_router(table_router)
+app.include_router(employee_router)
+app.include_router(kitchen_router)
+app.include_router(dashboard_router)
+app.include_router(cashier_router)
+
+# ==================== Health check ====================
 @app.get("/")
-async def root():
-    return {
-        "success": True,
-        "message": "Restaurant API is running",
-        "version": "1.0.0",
-        "endpoints": [
-            "/health",
-            "/api/menu",
-            "/api/tables",
-            "/api/orders"
-        ]
-    }
-
-@app.get("/health")
-async def health_check():
-    return {
-        "success": True,
-        "status": "healthy",
-        "service": "restaurant-api"
-    }
-
-# Import and register routes
-try:
-    from routes import menu, table
-    app.include_router(menu.router)
-    app.include_router(table.router)
-    print("✅ Routes loaded successfully")
-except Exception as e:
-    print(f"❌ Error loading routes: {e}")
-
-# Middleware to log all requests
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    print(f"📝 {request.method} {request.url.path}")
-    try:
-        response = await call_next(request)
-        print(f"✅ Response: {response.status_code}")
-        return response
-    except Exception as e:
-        print(f"❌ Error: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)}
-        )
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+def root():
+    return {"status": "ok"}
