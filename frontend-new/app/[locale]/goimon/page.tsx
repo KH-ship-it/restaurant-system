@@ -67,7 +67,9 @@ export default function OrderPage() {
         if (!verifyResult.success) {
           alert('❌ Mã QR không hợp lệ hoặc đã hết hạn!');
           setTableValid(false);
-          return;
+          setIsVerifying(false);
+          setIsLoading(false);
+          return; // ✅ Dừng lại, không tải menu
         }
         
         setTableValid(true);
@@ -75,7 +77,7 @@ export default function OrderPage() {
         setTableValid(true); // Allow without token for backward compatibility
       }
 
-      // Load menu
+      // ✅ Load menu - chỉ chạy khi đã xác thực thành công
       setIsLoading(true);
       const menuRes = await fetch(`${API_URL}/api/menu/public`, {
         headers: {
@@ -94,6 +96,7 @@ export default function OrderPage() {
     } catch (error) {
       console.error('❌ Error:', error);
       alert('Lỗi tải thực đơn!');
+      setTableValid(false); // ✅ Set tableValid = false khi có lỗi
     } finally {
       setIsLoading(false);
       setIsVerifying(false);
