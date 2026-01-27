@@ -34,10 +34,16 @@ export default function MenuManagement() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // ⚠️ QUAN TRỌNG: Kiểm tra URL API của bạn
-  // Nếu đang test local, dùng: 'http://localhost:8000/api/menu'
-  // Nếu dùng production, thay bằng URL thực tế
-  const API_URL = 'http://localhost:8000/api/menu'; // ← Thay đổi URL này nếu cần
+  // ⚠️ QUAN TRỌNG: Sử dụng environment variable để frontend hoạt động trên mọi thiết bị
+  const getApiUrl = () => {
+    // Ưu tiên: Environment variable > Default localhost
+    if (typeof window !== 'undefined') {
+      return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    }
+    return 'http://localhost:8000';
+  };
+  
+  const API_URL = `${getApiUrl()}/api/menu`;
   
   const [formData, setFormData] = useState<MenuFormData>({
     item_name: '',
@@ -69,8 +75,8 @@ export default function MenuManagement() {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true', // ← Fix ngrok warning page
         },
-        // Thêm timeout để tránh treo vô thời hạn
         signal: AbortSignal.timeout(10000) // 10 seconds timeout
       });
 
@@ -292,6 +298,7 @@ export default function MenuManagement() {
         method: method,
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true', // ← Fix ngrok warning
         },
         body: JSON.stringify(payload)
       });
@@ -334,6 +341,7 @@ export default function MenuManagement() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({ status: newStatus })
       });
@@ -360,6 +368,7 @@ export default function MenuManagement() {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
         }
       });
 
@@ -574,7 +583,7 @@ export default function MenuManagement() {
                       id="imageUploadInput"
                       disabled={isUploading}
                     />
-                   
+                    
                     {/* Upload button */}
                     <label
                       htmlFor="imageUploadInput"
@@ -632,8 +641,11 @@ export default function MenuManagement() {
                       <div className="text-xs text-[#8b949e] flex items-start gap-2">
                         <span className="text-base">💡</span>
                         <div>
-                          <div className="font-medium text-[#c9d1d9] mb-1"></div>
+                          <div className="font-medium text-[#c9d1d9] mb-1">Tối ưu hóa tự động:</div>
                           <ul className="list-disc list-inside space-y-1 text-[#6e7681]">
+                            <li>Ảnh sẽ tự động resize về tối đa 800x800px</li>
+                            <li>Nén với chất lượng 70% để giảm dung lượng</li>
+                            <li>Lưu dạng Base64 vào database</li>
                           </ul>
                         </div>
                       </div>
