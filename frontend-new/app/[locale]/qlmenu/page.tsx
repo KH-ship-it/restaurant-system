@@ -466,7 +466,6 @@ export default function MenuManagement() {
                   <option value="unavailable">Hết món</option>
                 </select>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {filteredItems.map(item => (
                   <div key={item.item_id} className="bg-[#161b22] border border-[#30363d] rounded-xl overflow-hidden hover:border-[#58a6ff] hover:-translate-y-1 transition-all">
