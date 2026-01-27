@@ -31,6 +31,7 @@ export default function OrderPage() {
   const [tableValid, setTableValid] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -44,17 +45,22 @@ export default function OrderPage() {
 
   useEffect(() => {
     verifyTableAndLoadMenu();
-  }, []);
+  }, [tableNumber, token]);
 
   const verifyTableAndLoadMenu = async () => {
     try {
       setIsVerifying(true);
+      setErrorMessage('');
+
+      console.log('🔍 Checking table:', tableNumber, 'Token:', token);
 
       // Verify table token
       if (token) {
+        console.log('🔐 Verifying token...');
         const verifyRes = await fetch(
           `${API_URL}/api/tables/${tableNumber}/verify?token=${token}`,
           {
+            method: 'GET',
             headers: {
               'Content-Type': 'application/json',
               'ngrok-skip-browser-warning': 'true',
@@ -62,41 +68,67 @@ export default function OrderPage() {
           }
         );
 
-        const verifyResult = await verifyRes.json();
-        
-        if (!verifyResult.success) {
-          alert('❌ Mã QR không hợp lệ hoặc đã hết hạn!');
+        console.log('✅ Verify response status:', verifyRes.status);
+
+        if (!verifyRes.ok) {
+          console.error('❌ Verification failed with status:', verifyRes.status);
           setTableValid(false);
+          setErrorMessage('Không thể xác thực mã QR. Vui lòng thử lại.');
           setIsVerifying(false);
           setIsLoading(false);
-          return; // ✅ Dừng lại, không tải menu
+          return;
+        }
+
+        const verifyResult = await verifyRes.json();
+        console.log('📋 Verify result:', verifyResult);
+        
+        if (!verifyResult.success) {
+          console.error('❌ Token invalid');
+          setTableValid(false);
+          setErrorMessage('Mã QR không hợp lệ hoặc đã hết hạn.');
+          setIsVerifying(false);
+          setIsLoading(false);
+          return;
         }
         
+        console.log('✅ Token verified successfully');
         setTableValid(true);
       } else {
-        setTableValid(true); // Allow without token for backward compatibility
+        console.log('⚠️ No token provided, allowing access');
+        setTableValid(true);
       }
 
-      // ✅ Load menu - chỉ chạy khi đã xác thực thành công
+      // Load menu
+      console.log('📖 Loading menu...');
       setIsLoading(true);
+      
       const menuRes = await fetch(`${API_URL}/api/menu/public`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
       });
 
+      console.log('✅ Menu response status:', menuRes.status);
+
+      if (!menuRes.ok) {
+        throw new Error(`Menu fetch failed with status: ${menuRes.status}`);
+      }
+
       const menuResult = await menuRes.json();
+      console.log('📋 Menu result:', menuResult);
       
       if (menuResult.success && menuResult.data) {
+        console.log('✅ Menu loaded:', menuResult.data.length, 'items');
         setMenuItems(menuResult.data);
       } else {
-        throw new Error('Failed to load menu');
+        throw new Error('Invalid menu data structure');
       }
     } catch (error) {
-      console.error('❌ Error:', error);
-      alert('Lỗi tải thực đơn!');
-      setTableValid(false); // ✅ Set tableValid = false khi có lỗi
+      console.error('❌ Error in verifyTableAndLoadMenu:', error);
+      setErrorMessage('Không thể tải thực đơn. Vui lòng kiểm tra kết nối mạng.');
+      setTableValid(false);
     } finally {
       setIsLoading(false);
       setIsVerifying(false);
@@ -133,7 +165,7 @@ export default function OrderPage() {
     return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   };
 
-  const handleSubmitOrder = () => {
+  const handleSubmitOrder = async () => {
     if (!customerName.trim()) {
       alert('Vui lòng nhập tên khách hàng!');
       return;
@@ -144,29 +176,51 @@ export default function OrderPage() {
       return;
     }
 
-    const order = {
-      id: `ORD-${Date.now()}`,
-      tableNumber: parseInt(tableNumber),
-      customerName: customerName.trim(),
-      items: cart.map(item => ({
-        id: item.item_id,
-        name: item.item_name,
-        price: item.price,
-        quantity: item.quantity,
-      })),
-      totalAmount: getTotalAmount(),
-      status: 'pending',
-      orderTime: new Date().toLocaleTimeString('vi-VN'),
-      createdAt: Date.now(),
-    };
+    try {
+      console.log('📤 Submitting order...');
+      
+      const orderData = {
+        table_number: parseInt(tableNumber),
+        customer_name: customerName.trim(),
+        items: cart.map(item => ({
+          item_id: item.item_id,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+        total_amount: getTotalAmount(),
+      };
 
-    // Save to localStorage for staff to see
-    const existingOrders = JSON.parse(localStorage.getItem('staff-orders') || '[]');
-    localStorage.setItem('staff-orders', JSON.stringify([...existingOrders, order]));
+      console.log('📋 Order data:', orderData);
 
-    alert('✅ Đặt món thành công! Nhân viên sẽ phục vụ trong giây lát.');
-    setCart([]);
-    setCustomerName('');
+      const response = await fetch(`${API_URL}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify(orderData),
+      });
+
+      console.log('✅ Order response status:', response.status);
+
+      if (!response.ok) {
+        throw new Error(`Order submission failed with status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('📋 Order result:', result);
+
+      if (result.success) {
+        alert('✅ Đặt món thành công! Nhân viên sẽ phục vụ trong giây lát.');
+        setCart([]);
+        setCustomerName('');
+      } else {
+        alert('❌ Đặt món thất bại: ' + (result.message || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('❌ Order error:', error);
+      alert('❌ Lỗi kết nối! Vui lòng thử lại.');
+    }
   };
 
   const filteredItems = menuItems.filter(item => 
@@ -179,6 +233,7 @@ export default function OrderPage() {
         <div className="text-center">
           <div className="text-6xl mb-4 animate-bounce">🔐</div>
           <div className="text-white text-xl">Đang xác thực...</div>
+          <div className="text-[#8b949e] text-sm mt-2">Table: {tableNumber}</div>
         </div>
       </div>
     );
@@ -189,10 +244,16 @@ export default function OrderPage() {
       <div className="min-h-screen bg-[#0d1117] flex items-center justify-center p-4">
         <div className="text-center max-w-md">
           <div className="text-6xl mb-4">❌</div>
-          <h1 className="text-white text-2xl mb-2">Mã QR không hợp lệ</h1>
-          <p className="text-[#8b949e]">
-            QR code đã hết hạn hoặc không chính xác. Vui lòng quét lại mã mới từ nhân viên.
+          <h1 className="text-white text-2xl mb-2">Không thể tải trang</h1>
+          <p className="text-[#8b949e] mb-4">
+            {errorMessage || 'QR code đã hết hạn hoặc không chính xác. Vui lòng quét lại mã mới từ nhân viên.'}
           </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-[#238636] text-white rounded-lg hover:bg-[#2ea043]"
+          >
+            🔄 Thử lại
+          </button>
         </div>
       </div>
     );
@@ -204,6 +265,27 @@ export default function OrderPage() {
         <div className="text-center">
           <div className="text-6xl mb-4 animate-bounce">🍽️</div>
           <div className="text-white text-xl">Đang tải thực đơn...</div>
+          <div className="text-[#8b949e] text-sm mt-2">Bàn số {tableNumber}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (menuItems.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-4">📋</div>
+          <h1 className="text-white text-2xl mb-2">Thực đơn trống</h1>
+          <p className="text-[#8b949e] mb-4">
+            Hiện tại chưa có món ăn nào. Vui lòng liên hệ nhân viên.
+          </p>
+          <button
+            onClick={() => verifyTableAndLoadMenu()}
+            className="px-6 py-3 bg-[#238636] text-white rounded-lg hover:bg-[#2ea043]"
+          >
+            🔄 Tải lại
+          </button>
         </div>
       </div>
     );
@@ -261,6 +343,10 @@ export default function OrderPage() {
                 src={item.image_url}
                 alt={item.item_name}
                 className="w-20 h-20 object-cover rounded-lg"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = 'https://via.placeholder.com/80?text=No+Image';
+                }}
               />
               <div className="flex-1">
                 <h3 className="text-white font-semibold mb-1">{item.item_name}</h3>
