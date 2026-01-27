@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 
 interface MenuItem {
   item_id: number;
@@ -20,45 +20,17 @@ interface CartItem extends MenuItem {
 
 export default function OrderPage() {
   const params = useParams();
-  const searchParams = useSearchParams();
   const tableNumber = params.number as string;
-  const token = searchParams.get('token');
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isVerifying, setIsVerifying] = useState(true);
-  const [tableValid, setTableValid] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [debugInfo, setDebugInfo] = useState<string[]>([]);
+  const [error, setError] = useState('');
 
-  // ✅ Fix: Lấy API URL từ environment hoặc tự động detect
-  const getApiUrl = () => {
-    // Nếu có NEXT_PUBLIC_API_URL thì dùng
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      return process.env.NEXT_PUBLIC_API_URL;
-    }
-    
-    // Nếu đang ở client-side, dùng window.location để tự động detect
-    if (typeof window !== 'undefined') {
-      const protocol = window.location.protocol;
-      const hostname = window.location.hostname;
-      
-      // Nếu là localhost, dùng localhost:8000
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://localhost:8000';
-      }
-      
-      // Nếu là production/ngrok, dùng cùng domain nhưng port 8000
-      return `${protocol}//${hostname}:8000`;
-    }
-    
-    return 'http://localhost:8000';
-  };
-
-  const API_URL = getApiUrl();
+  // ✅ Sử dụng relative URL thay vì absolute
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
   const categories = [
     { id: 'all', name: 'Tất cả', icon: '🍽️' },
@@ -69,131 +41,67 @@ export default function OrderPage() {
   ];
 
   useEffect(() => {
-    const info = [
-      `API URL: ${API_URL}`,
-      `Table: ${tableNumber}`,
-      `Token: ${token ? 'Yes' : 'No'}`,
-      `User Agent: ${typeof window !== 'undefined' ? navigator.userAgent : 'SSR'}`
-    ];
-    setDebugInfo(info);
-    console.log('🔧 Debug Info:', info);
-    
-    verifyTableAndLoadMenu();
-  }, [tableNumber, token]);
+    loadMenu();
+  }, []);
 
-  const verifyTableAndLoadMenu = async () => {
-    const log = (msg: string) => {
-      console.log(msg);
-      setDebugInfo(prev => [...prev, msg]);
-    };
-
+  const loadMenu = async () => {
     try {
-      setIsVerifying(true);
-      setErrorMessage('');
+      setIsLoading(true);
+      setError('');
+      
+      console.log('🔍 Loading menu...');
+      console.log('API Base:', API_BASE);
+      
+      // ✅ Thử nhiều URL khác nhau
+      const urls = [
+        `${API_BASE}/api/menu/public`,
+        '/api/menu/public',
+        'http://localhost:8000/api/menu/public'
+      ];
 
-      log('🔍 Starting verification...');
-      log(`API URL: ${API_URL}`);
+      let menuData = null;
+      let lastError = null;
 
-      // Verify table token
-      if (token) {
-        log('🔐 Verifying token...');
-        
-        const verifyUrl = `${API_URL}/api/tables/${tableNumber}/verify?token=${token}`;
-        log(`Verify URL: ${verifyUrl}`);
-        
+      for (const url of urls) {
         try {
-          const verifyRes = await fetch(verifyUrl, {
+          console.log(`🔗 Trying: ${url}`);
+          
+          const response = await fetch(url, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
               'ngrok-skip-browser-warning': 'true',
             },
-            // ✅ Add timeout
-            signal: AbortSignal.timeout(10000), // 10 seconds timeout
           });
 
-          log(`✅ Verify response status: ${verifyRes.status}`);
+          console.log(`📡 Response status: ${response.status}`);
 
-          if (!verifyRes.ok) {
-            log(`❌ Verification failed with status: ${verifyRes.status}`);
-            setTableValid(false);
-            setErrorMessage(`Lỗi xác thực (HTTP ${verifyRes.status}). Vui lòng thử lại.`);
-            setIsVerifying(false);
-            setIsLoading(false);
-            return;
+          if (response.ok) {
+            const result = await response.json();
+            console.log('✅ Success:', result);
+            
+            if (result.success && result.data) {
+              menuData = result.data;
+              break;
+            }
           }
-
-          const verifyResult = await verifyRes.json();
-          log(`📋 Verify result: ${JSON.stringify(verifyResult)}`);
-          
-          if (!verifyResult.success) {
-            log('❌ Token invalid');
-            setTableValid(false);
-            setErrorMessage('Mã QR không hợp lệ hoặc đã hết hạn.');
-            setIsVerifying(false);
-            setIsLoading(false);
-            return;
-          }
-          
-          log('✅ Token verified successfully');
-          setTableValid(true);
-        } catch (verifyError: any) {
-          log(`❌ Verify error: ${verifyError.message}`);
-          setTableValid(false);
-          setErrorMessage(`Lỗi kết nối API: ${verifyError.message}`);
-          setIsVerifying(false);
-          setIsLoading(false);
-          return;
+        } catch (err: any) {
+          console.log(`❌ Failed: ${url}`, err.message);
+          lastError = err;
         }
+      }
+
+      if (menuData && menuData.length > 0) {
+        console.log(`✅ Loaded ${menuData.length} items`);
+        setMenuItems(menuData);
       } else {
-        log('⚠️ No token provided, skipping verification');
-        setTableValid(true);
+        throw lastError || new Error('Cannot load menu from any URL');
       }
-
-      // Load menu
-      log('📖 Loading menu...');
-      setIsLoading(true);
-      
-      const menuUrl = `${API_URL}/api/menu/public`;
-      log(`Menu URL: ${menuUrl}`);
-      
-      try {
-        const menuRes = await fetch(menuUrl, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
-          },
-          signal: AbortSignal.timeout(10000), // 10 seconds timeout
-        });
-
-        log(`✅ Menu response status: ${menuRes.status}`);
-
-        if (!menuRes.ok) {
-          throw new Error(`Menu fetch failed with status: ${menuRes.status}`);
-        }
-
-        const menuResult = await menuRes.json();
-        log(`📋 Menu result: ${JSON.stringify(menuResult).substring(0, 200)}...`);
-        
-        if (menuResult.success && menuResult.data) {
-          log(`✅ Menu loaded: ${menuResult.data.length} items`);
-          setMenuItems(menuResult.data);
-        } else {
-          throw new Error('Invalid menu data structure');
-        }
-      } catch (menuError: any) {
-        log(`❌ Menu error: ${menuError.message}`);
-        throw menuError;
-      }
-    } catch (error: any) {
-      log(`❌ Fatal error: ${error.message}`);
-      console.error('❌ Error in verifyTableAndLoadMenu:', error);
-      setErrorMessage(`Không thể tải dữ liệu: ${error.message}`);
-      setTableValid(false);
+    } catch (err: any) {
+      console.error('❌ Error loading menu:', err);
+      setError(err.message || 'Không thể tải thực đơn');
     } finally {
       setIsLoading(false);
-      setIsVerifying(false);
     }
   };
 
@@ -239,8 +147,6 @@ export default function OrderPage() {
     }
 
     try {
-      console.log('📤 Submitting order...');
-      
       const orderData = {
         table_number: parseInt(tableNumber),
         customer_name: customerName.trim(),
@@ -252,96 +158,55 @@ export default function OrderPage() {
         total_amount: getTotalAmount(),
       };
 
-      console.log('📋 Order data:', orderData);
+      console.log('📤 Submitting order:', orderData);
 
-      const response = await fetch(`${API_URL}/api/orders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: JSON.stringify(orderData),
-        signal: AbortSignal.timeout(10000),
-      });
+      const urls = [
+        `${API_BASE}/api/orders`,
+        '/api/orders',
+        'http://localhost:8000/api/orders'
+      ];
 
-      console.log('✅ Order response status:', response.status);
+      let success = false;
 
-      if (!response.ok) {
-        throw new Error(`Order submission failed with status: ${response.status}`);
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            },
+            body: JSON.stringify(orderData),
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+              success = true;
+              break;
+            }
+          }
+        } catch (err) {
+          console.log(`Failed to submit to ${url}`);
+        }
       }
 
-      const result = await response.json();
-      console.log('📋 Order result:', result);
-
-      if (result.success) {
+      if (success) {
         alert('✅ Đặt món thành công! Nhân viên sẽ phục vụ trong giây lát.');
         setCart([]);
         setCustomerName('');
       } else {
-        alert('❌ Đặt món thất bại: ' + (result.message || 'Unknown error'));
+        alert('❌ Không thể đặt món. Vui lòng thử lại.');
       }
     } catch (error: any) {
       console.error('❌ Order error:', error);
-      alert(`❌ Lỗi kết nối: ${error.message}`);
+      alert('❌ Lỗi kết nối! Vui lòng thử lại.');
     }
   };
 
   const filteredItems = menuItems.filter(item => 
     activeCategory === 'all' || item.category_id.toString() === activeCategory.toString()
   );
-
-  // ✅ Show debug info in development
-  const [showDebug, setShowDebug] = useState(false);
-
-  if (isVerifying) {
-    return (
-      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="text-6xl mb-4 animate-bounce">🔐</div>
-          <div className="text-white text-xl mb-2">Đang xác thực...</div>
-          <div className="text-[#8b949e] text-sm">Table: {tableNumber}</div>
-          <div className="text-[#8b949e] text-xs mt-4">API: {API_URL}</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!tableValid) {
-    return (
-      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center p-4">
-        <div className="text-center max-w-md w-full">
-          <div className="text-6xl mb-4">❌</div>
-          <h1 className="text-white text-2xl mb-2">Không thể tải trang</h1>
-          <p className="text-[#8b949e] mb-4">
-            {errorMessage || 'QR code đã hết hạn hoặc không chính xác.'}
-          </p>
-          <div className="space-y-2">
-            <button
-              onClick={() => window.location.reload()}
-              className="w-full px-6 py-3 bg-[#238636] text-white rounded-lg hover:bg-[#2ea043]"
-            >
-              🔄 Thử lại
-            </button>
-            <button
-              onClick={() => setShowDebug(!showDebug)}
-              className="w-full px-4 py-2 bg-[#161b22] text-[#8b949e] rounded-lg text-sm"
-            >
-              {showDebug ? '🔽' : '🔼'} Debug Info
-            </button>
-          </div>
-          {showDebug && (
-            <div className="mt-4 p-4 bg-[#161b22] rounded-lg text-left">
-              <div className="text-xs text-[#8b949e] font-mono space-y-1">
-                {debugInfo.map((info, i) => (
-                  <div key={i}>{info}</div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   if (isLoading) {
     return (
@@ -350,7 +215,24 @@ export default function OrderPage() {
           <div className="text-6xl mb-4 animate-bounce">🍽️</div>
           <div className="text-white text-xl mb-2">Đang tải thực đơn...</div>
           <div className="text-[#8b949e] text-sm">Bàn số {tableNumber}</div>
-          <div className="text-[#8b949e] text-xs mt-4">API: {API_URL}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-4">❌</div>
+          <h1 className="text-white text-2xl mb-2">Không thể tải menu</h1>
+          <p className="text-[#8b949e] mb-4">{error}</p>
+          <button
+            onClick={loadMenu}
+            className="px-6 py-3 bg-[#238636] text-white rounded-lg hover:bg-[#2ea043]"
+          >
+            🔄 Thử lại
+          </button>
         </div>
       </div>
     );
@@ -362,11 +244,9 @@ export default function OrderPage() {
         <div className="text-center max-w-md">
           <div className="text-6xl mb-4">📋</div>
           <h1 className="text-white text-2xl mb-2">Thực đơn trống</h1>
-          <p className="text-[#8b949e] mb-4">
-            Hiện tại chưa có món ăn nào. Vui lòng liên hệ nhân viên.
-          </p>
+          <p className="text-[#8b949e] mb-4">Chưa có món ăn nào.</p>
           <button
-            onClick={() => verifyTableAndLoadMenu()}
+            onClick={loadMenu}
             className="px-6 py-3 bg-[#238636] text-white rounded-lg hover:bg-[#2ea043]"
           >
             🔄 Tải lại
