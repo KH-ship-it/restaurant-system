@@ -1,387 +1,267 @@
-# ==================== utils/auth.py ====================
-import jwt
-import bcrypt
-from datetime import datetime, timedelta
+# ========================================
+# FILE: backend/utils/auth.py - PHIÊN BẢN HOÀN CHỈNH
+# ========================================
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+from typing import Optional
 import os
-from dotenv import load_dotenv
-from config.database import get_db_connection
 
-load_dotenv()
+# ========================================
+# PASSWORD HASHING
+# ========================================
 
-# JWT Configuration
-JWT_SECRET = os.getenv("JWT_SECRET", "your-super-secret-jwt-key-change-this")
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRES_IN = int(os.getenv("JWT_EXPIRES_IN", "24"))  # hours
-
-security = HTTPBearer()
-
-# ==================== Password Functions ====================
-
-def hash_password(password: str) -> str:
-    """Hash password using bcrypt"""
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-    return hashed.decode('utf-8')
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password against hash"""
+    """
+    Verify a plain password against a hashed password
+    
+    Args:
+        plain_password: Plain text password from user
+        hashed_password: Hashed password from database
+    
+    Returns:
+        bool: True if password matches, False otherwise
+    """
     try:
-        return bcrypt.checkpw(
-            plain_password.encode('utf-8'),
-            hashed_password.encode('utf-8')
-        )
+        return pwd_context.verify(plain_password, hashed_password)
     except Exception as e:
-        print(f"Password verification error: {e}")
+        print(f"❌ Password verification error: {e}")
         return False
 
-# ==================== JWT Functions ====================
+def get_password_hash(password: str) -> str:
+    """
+    Hash a password for storing in database
+    
+    Args:
+        password: Plain text password
+    
+    Returns:
+        str: Hashed password
+    """
+    return pwd_context.hash(password)
 
-def create_access_token(user_id: int, username: str, role: str) -> str:
-    """Create JWT access token"""
-    payload = {
+# ========================================
+# JWT TOKEN
+# ========================================
+
+# JWT Settings from environment or defaults
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production-please")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+
+def create_access_token(user_id: int, username: str, role: str, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Create JWT access token
+    
+    Args:
+        user_id: User ID
+        username: Username
+        role: User role (OWNER, admin, CASHIER, etc.)
+        expires_delta: Optional custom expiration time
+    
+    Returns:
+        str: JWT token
+    """
+    # Prepare data to encode
+    to_encode = {
         "user_id": user_id,
         "username": username,
         "role": role,
-        "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRES_IN),
-        "iat": datetime.utcnow()
     }
     
-    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    return token
+    # Calculate expiration time
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    # Add expiration to payload
+    to_encode.update({"exp": expire})
+    
+    # Encode JWT
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    print(f"🎟️ Created token for user_id={user_id}, expires at {expire}")
+    
+    return encoded_jwt
 
-def decode_access_token(token: str) -> dict:
-    """Decode and verify JWT token"""
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token đã hết hạn. Vui lòng đăng nhập lại."
-        )
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ"
-        )
+# ========================================
+# TOKEN VERIFICATION
+# ========================================
 
-# ==================== Authentication Dependencies ====================
+# HTTP Bearer scheme for extracting token from Authorization header
+security = HTTPBearer()
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> dict:
-    """Get current authenticated user from JWT token"""
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """
+    Verify JWT token from Authorization header and return user data
+    
+    Expected header format: Authorization: Bearer <token>
+    
+    Args:
+        credentials: HTTPAuthorizationCredentials from FastAPI
+    
+    Returns:
+        dict: User data (user_id, username, role)
+    
+    Raises:
+        HTTPException: If token is invalid or expired
+    """
     token = credentials.credentials
     
-    # Decode token
-    payload = decode_access_token(token)
-    user_id = payload.get('user_id')
-    
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token thiếu thông tin user_id"
-        )
-    
-    # Verify user exists and is active
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No authentication token found",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     
     try:
-        # ✅ Query đúng: lấy role trực tiếp từ bảng users
-        cursor.execute(
-            """
-            SELECT u.user_id, u.username, u.role, u.is_active,
-                   e.full_name, e.phone, e.position
-            FROM users u
-            LEFT JOIN employees e ON u.user_id = e.user_id
-            WHERE u.user_id = %s
-            """,
-            (user_id,)
-        )
-        user = cursor.fetchone()
+        # Decode JWT token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Không tìm thấy người dùng"
-            )
+        # Extract user info
+        user_id: int = payload.get("user_id")
+        username: str = payload.get("username")
+        role: str = payload.get("role")
         
-        if not user['is_active']:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tài khoản đã bị vô hiệu hóa"
-            )
+        # Validate required fields
+        if user_id is None or username is None:
+            print(f"❌ Token missing required fields: user_id={user_id}, username={username}")
+            raise credentials_exception
         
-        return dict(user)
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi xác thực: {str(e)}"
-        )
-    finally:
-        cursor.close()
-        conn.close()
-
-# ==================== Role-based Access Control ====================
-
-def require_roles(allowed_roles: list):
-    """
-    Dependency to verify user has one of the required roles
-    
-    Usage:
-        @router.get("/admin/dashboard")
-        async def admin_dashboard(
-            current_user: dict = Depends(require_roles(["OWNER", "admin"]))
-        ):
-            return {"message": "Welcome admin"}
-    """
-    async def role_verifier(current_user: dict = Depends(get_current_user)):
-        user_role = current_user.get('role')
+        # Check token expiration
+        exp = payload.get("exp")
+        if exp:
+            current_time = datetime.utcnow().timestamp()
+            if current_time > exp:
+                print(f"❌ Token expired: exp={exp}, current={current_time}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has expired",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
         
-        if user_role not in allowed_roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Bạn không có quyền truy cập. Yêu cầu vai trò: {', '.join(allowed_roles)}"
-            )
-        
-        return current_user
-    
-    return role_verifier
-
-
-# ==================== Convenience Role Checkers ====================
-
-def require_owner():
-    """Require OWNER role"""
-    return require_roles(["OWNER"])
-
-def require_admin():
-    """Require OWNER or admin role"""
-    return require_roles(["OWNER", "admin"])
-
-def require_kitchen():
-    """Require OWNER or KITCHEN role"""
-    return require_roles(["OWNER", "KITCHEN"])
-
-def require_staff():
-    """Require any staff role"""
-    return require_roles(["OWNER", "admin", "KITCHEN", "staff"])
-
-
-# ==================== routes/auth.py ====================
-from fastapi import APIRouter, HTTPException, status, Depends
-from models.schemas import UserLogin, LoginResponse, UserResponse
-from config.database import get_db_connection
-from utils.auth import (
-    verify_password, 
-    create_access_token, 
-    get_current_user,
-    hash_password
-)
-
-router = APIRouter(prefix="/api/auth", tags=["authentication"])
-
-# Role to Routes Mapping
-ROLE_ROUTES = {
-    "OWNER": ["/admin", "/manager", "/kitchen", "/cashier", "/staff"],
-    "admin": ["/admin"],
-    "KITCHEN": ["/kitchen"],
-    "staff": ["/staff"],
-}
-
-# Role Display Names
-ROLE_DISPLAY = {
-    "OWNER": "Chủ nhà hàng",
-    "admin": "Quản lý",
-    "KITCHEN": "Bếp",
-    "staff": "Nhân viên"
-}
-
-@router.post("/login", response_model=LoginResponse)
-async def login(credentials: UserLogin):
-    """
-    Login endpoint with role-based access control
-    - Validates username/password
-    - Checks if account is active
-    - Returns JWT token + allowed_routes based on role
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # ✅ Query đúng: lấy role trực tiếp từ bảng users
-        cursor.execute(
-            """
-            SELECT u.user_id, u.username, u.password_hash, u.role, u.is_active,
-                   e.full_name, e.phone, e.position
-            FROM users u
-            LEFT JOIN employees e ON u.user_id = e.user_id
-            WHERE u.username = %s
-            """,
-            (credentials.username,)
-        )
-        
-        user = cursor.fetchone()
-        
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Tên đăng nhập hoặc mật khẩu không đúng"
-            )
-        
-        # Check if account is active
-        if not user['is_active']:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tài khoản đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên."
-            )
-        
-        # Verify password
-        if not verify_password(credentials.password, user['password_hash']):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Tên đăng nhập hoặc mật khẩu không đúng"
-            )
-        
-        # Get user role
-        user_role = user['role']
-        
-        # Validate role exists in system
-        if user_role not in ROLE_ROUTES:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Vai trò '{user_role}' không hợp lệ trong hệ thống"
-            )
-        
-        # Create JWT token
-        token = create_access_token(
-            user_id=user['user_id'],
-            username=user['username'],
-            role=user_role
-        )
-        
-        # Get allowed routes
-        allowed_routes = ROLE_ROUTES.get(user_role, [])
-        
-        # Prepare response
-        user_response = UserResponse(
-            id=user['user_id'],
-            username=user['username'],
-            role=user_role,
-            fullName=user.get('full_name', user['username']),
-            email=f"{user['username']}@restaurant.com"
-        )
-        
-        return LoginResponse(
-            success=True,
-            token=token,
-            user=user_response,
-            allowed_routes=allowed_routes
-        )
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Login error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Đăng nhập thất bại: {str(e)}"
-        )
-    finally:
-        cursor.close()
-        conn.close()
-
-
-@router.get("/me")
-async def get_me(current_user: dict = Depends(get_current_user)):
-    """Get current user information"""
-    allowed_routes = ROLE_ROUTES.get(current_user['role'], [])
-    
-    return {
-        "success": True,
-        "data": {
-            "user_id": current_user['user_id'],
-            "username": current_user['username'],
-            "role": current_user['role'],
-            "role_display": ROLE_DISPLAY.get(current_user['role'], current_user['role']),
-            "full_name": current_user.get('full_name'),
-            "phone": current_user.get('phone'),
-            "position": current_user.get('position'),
-            "is_active": current_user['is_active'],
-            "allowed_routes": allowed_routes
-        }
-    }
-
-
-@router.post("/logout")
-async def logout(current_user: dict = Depends(get_current_user)):
-    """Logout - client removes token"""
-    return {
-        "success": True,
-        "message": "Đăng xuất thành công"
-    }
-
-
-@router.post("/change-password")
-async def change_password(
-    old_password: str,
-    new_password: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Change password for current user"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # Get current password hash
-        cursor.execute(
-            "SELECT password_hash FROM users WHERE user_id = %s",
-            (current_user['user_id'],)
-        )
-        result = cursor.fetchone()
-        
-        if not result:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Không tìm thấy người dùng"
-            )
-        
-        # Verify old password
-        if not verify_password(old_password, result['password_hash']):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Mật khẩu cũ không đúng"
-            )
-        
-        # Hash new password
-        new_hash = hash_password(new_password)
-        
-        # Update password
-        cursor.execute(
-            "UPDATE users SET password_hash = %s, updated_at = NOW() WHERE user_id = %s",
-            (new_hash, current_user['user_id'])
-        )
-        conn.commit()
+        print(f"✅ Token verified for user: {username} (role: {role})")
         
         return {
-            "success": True,
-            "message": "Đổi mật khẩu thành công"
+            "user_id": user_id,
+            "username": username,
+            "role": role
         }
-    
+        
+    except JWTError as e:
+        print(f"❌ JWT decode error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid authentication token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     except HTTPException:
+        # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        conn.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Đổi mật khẩu thất bại: {str(e)}"
-        )
-    finally:
-        cursor.close()
-        conn.close()
+        print(f"❌ Unexpected error in get_current_user: {str(e)}")
+        raise credentials_exception
+
+# ========================================
+# OPTIONAL USER (for endpoints that work with or without auth)
+# ========================================
+
+def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Optional[dict]:
+    """
+    Get current user if token is provided, otherwise return None
+    Useful for endpoints that have different behavior for authenticated vs anonymous users
+    
+    Args:
+        credentials: Optional HTTPAuthorizationCredentials
+    
+    Returns:
+        dict or None: User data if authenticated, None otherwise
+    """
+    if not credentials:
+        return None
+    
+    try:
+        return get_current_user(credentials)
+    except HTTPException:
+        return None
+
+# ========================================
+# HELPER FUNCTIONS
+# ========================================
+
+def create_test_user_token(username: str = "test", role: str = "admin") -> str:
+    """
+    Create a test token for development/testing
+    
+    Args:
+        username: Test username
+        role: Test user role
+    
+    Returns:
+        str: JWT token
+    """
+    return create_access_token(
+        user_id=999,
+        username=username,
+        role=role,
+        expires_delta=timedelta(hours=24)
+    )
+
+def decode_token_without_verification(token: str) -> dict:
+    """
+    Decode token without verifying signature (for debugging)
+    
+    Args:
+        token: JWT token
+    
+    Returns:
+        dict: Decoded payload
+    """
+    try:
+        # Decode without verification (ONLY for debugging!)
+        payload = jwt.decode(token, options={"verify_signature": False})
+        return payload
+    except Exception as e:
+        print(f"❌ Failed to decode token: {e}")
+        return {}
+
+# ========================================
+# TESTING FUNCTIONS
+# ========================================
+
+if __name__ == "__main__":
+    # Test password hashing
+    print("\n" + "=" * 60)
+    print("Testing Password Hashing")
+    print("=" * 60)
+    
+    password = "password"
+    hashed = get_password_hash(password)
+    print(f"Plain password: {password}")
+    print(f"Hashed: {hashed}")
+    print(f"Verification: {verify_password(password, hashed)}")
+    print(f"Wrong password: {verify_password('wrong', hashed)}")
+    
+    # Test token creation
+    print("\n" + "=" * 60)
+    print("Testing Token Creation")
+    print("=" * 60)
+    
+    token = create_access_token(
+        user_id=1,
+        username="admin",
+        role="admin"
+    )
+    print(f"Token: {token}")
+    
+    # Decode token
+    payload = decode_token_without_verification(token)
+    print(f"Decoded payload: {payload}")
+    
+    print("\n✅ All tests completed!")
