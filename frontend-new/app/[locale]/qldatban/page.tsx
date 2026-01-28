@@ -51,21 +51,34 @@ export default function TableManagementPage() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const result = await res.json();
-    console.log('Tables loaded:', result);
+    console.log('✅ Tables loaded:', result);
 
-    // FIX: Check result.success và result.data
+    // ✅ FIX: Check result.success và result.data
     if (result.success && Array.isArray(result.data)) {
-      setTables(
-        result.data.map((t: any) => ({
-          table_id: t.table_id,
-          number: t.number,           //Backend đã alias thành "number"
-          capacity: t.capacity,
-          status: t.status,
-          token: t.qr_code,
-          created_at: t.created_at,
-          updated_at: t.updated_at,
-        }))
-      );
+      const mappedTables = result.data.map((t: any) => ({
+        table_id: t.table_id,
+        number: t.number,        // Backend alias: table_number as number
+        capacity: t.capacity,
+        status: t.status,
+        token: t.qr_code,
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+      }));
+      console.log('📊 Mapped tables:', mappedTables);
+      setTables(mappedTables);
+    } else if (Array.isArray(result)) {
+      // Fallback nếu API trả mảng trực tiếp
+      const mappedTables = result.map((t: any) => ({
+        table_id: t.table_id,
+        number: t.table_number || t.number,
+        capacity: t.capacity,
+        status: t.status,
+        token: t.qr_code,
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+      }));
+      console.log('📊 Mapped tables (fallback):', mappedTables);
+      setTables(mappedTables);
     } else {
       console.error('❌ API response invalid:', result);
     }
