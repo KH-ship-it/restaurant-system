@@ -29,7 +29,7 @@ class TableUpdate(BaseModel):
 # ========================================
 
 @router.get("/")
-async def get_tables(current_user: dict = Depends(get_current_user)):
+async def get_tables():
     """
     Get all tables
     Requires authentication
