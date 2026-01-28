@@ -89,8 +89,6 @@ export default function TableManagementPage() {
     setIsLoading(false);
   }
 };
-
-
   const filteredTables = tables.filter(t => {
     const matchSearch = t.number.toString().includes(search);
     const matchFilter = filter === 'all' ? true : t.status === filter;
@@ -247,8 +245,100 @@ export default function TableManagementPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0d1117]">
-      {/* Rest of component - see full code */}
+  <div className="min-h-screen bg-[#0d1117] p-6">
+    {/* Header */}
+    <div className="mb-8">
+      <h1 className="text-3xl font-bold text-white mb-2">Quản Lý Bàn</h1>
+      <p className="text-gray-400">Tổng cộng {stats.total} bàn</p>
     </div>
-  );
+
+    {/* Stats */}
+    <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-gray-400 text-sm">Tổng số bàn</div>
+        <div className="text-2xl font-bold text-white">{stats.total}</div>
+      </div>
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-gray-400 text-sm">Bàn trống</div>
+        <div className="text-2xl font-bold text-green-500">{stats.available}</div>
+      </div>
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-gray-400 text-sm">Có khách</div>
+        <div className="text-2xl font-bold text-blue-500">{stats.occupied}</div>
+      </div>
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <div className="text-gray-400 text-sm">Đã đặt</div>
+        <div className="text-2xl font-bold text-yellow-500">{stats.reserved}</div>
+      </div>
+    </div>
+
+    {/* Controls */}
+    <div className="flex gap-4 mb-6">
+      <input
+        type="text"
+        placeholder="Tìm số bàn..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="flex-1 bg-gray-800 text-white px-4 py-2 rounded-lg"
+      />
+      <select
+        value={filter}
+        onChange={(e) => setFilter(e.target.value as any)}
+        className="bg-gray-800 text-white px-4 py-2 rounded-lg"
+      >
+        <option value="all">Tất cả</option>
+        <option value="AVAILABLE">Trống</option>
+        <option value="OCCUPIED">Có khách</option>
+        <option value="RESERVED">Đã đặt</option>
+      </select>
+      <button
+        onClick={() => setShowAddModal(true)}
+        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+      >
+        + Thêm bàn
+      </button>
+    </div>
+
+    {/* Tables Grid */}
+    <div className="grid grid-cols-4 gap-4">
+      {filteredTables.map((table) => (
+        <div
+          key={table.table_id}
+          className="bg-gray-800 p-6 rounded-lg hover:bg-gray-750 transition"
+        >
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-xl font-bold text-white">Bàn {table.number}</h3>
+              <p className="text-gray-400 text-sm">{table.capacity} chỗ ngồi</p>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-xs ${getStatusColor(table.status)}`}>
+              {getStatusText(table.status)}
+            </span>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => openQR(table)}
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm"
+            >
+              QR Code
+            </button>
+            <button
+              onClick={() => handleDelete(table.number)}
+              className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm"
+            >
+              Xóa
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    {filteredTables.length === 0 && (
+      <div className="text-center text-gray-400 py-12">
+        Không tìm thấy bàn nào
+      </div>
+    )}
+  </div>
+);
 }
