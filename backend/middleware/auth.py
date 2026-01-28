@@ -25,7 +25,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
-
 def verify_token(token: str = Depends(oauth2_scheme)):
     """Verify JWT token and return user data"""
     credentials_exception = HTTPException(
@@ -33,7 +32,6 @@ def verify_token(token: str = Depends(oauth2_scheme)):
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("username")
@@ -72,8 +70,7 @@ def require_role(allowed_roles: List[str]):
 # Alternative: Direct role checker function
 def get_current_user_with_role(required_roles: List[str]):
     """
-    Get current user and verify they have one of the required roles
-    
+    Get current user and verify they have one of the required roles    
     Usage:
         @router.get("/admin-only")
         def admin_endpoint(user = Depends(get_current_user_with_role(["ADMIN"]))):
