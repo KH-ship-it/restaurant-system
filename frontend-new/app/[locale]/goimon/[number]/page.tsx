@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
 interface MenuItem {
   item_id: number;
@@ -19,8 +19,8 @@ interface CartItem extends MenuItem {
 }
 
 export default function OrderPage() {
-  const params = useParams();
-  const tableNumber = params.number as string;
+  const searchParams = useSearchParams();
+  const tableNumber = searchParams.get('table') || '1';
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -28,9 +28,8 @@ export default function OrderPage() {
   const [customerName, setCustomerName] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [error, setError] = useState('');
-
-  // ✅ Sử dụng relative URL thay vì absolute
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+  
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   const categories = [
     { id: 'all', name: 'Tất cả', icon: '🍽️' },
@@ -49,53 +48,31 @@ export default function OrderPage() {
       setIsLoading(true);
       setError('');
       
-      console.log('🔍 Loading menu...');
-      console.log('API Base:', API_BASE);
+      console.log('🔍 Loading menu from:', `${API_BASE}/api/menu/public`);
       
-      // ✅ Thử nhiều URL khác nhau
-      const urls = [
-        `${API_BASE}/api/menu/public`,
-        '/api/menu/public',
-        'http://localhost:8000/api/menu/public'
-      ];
+      const response = await fetch(`${API_BASE}/api/menu/public`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
 
-      let menuData = null;
-      let lastError = null;
+      console.log('📡 Response status:', response.status);
 
-      for (const url of urls) {
-        try {
-          console.log(`🔗 Trying: ${url}`);
-          
-          const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'ngrok-skip-browser-warning': 'true',
-            },
-          });
-
-          console.log(`📡 Response status: ${response.status}`);
-
-          if (response.ok) {
-            const result = await response.json();
-            console.log('✅ Success:', result);
-            
-            if (result.success && result.data) {
-              menuData = result.data;
-              break;
-            }
-          }
-        } catch (err: any) {
-          console.log(`❌ Failed: ${url}`, err.message);
-          lastError = err;
-        }
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
 
-      if (menuData && menuData.length > 0) {
-        console.log(`✅ Loaded ${menuData.length} items`);
-        setMenuItems(menuData);
+      const result = await response.json();
+      console.log('✅ Menu data:', result);
+
+      if (result.success && result.data && result.data.length > 0) {
+        console.log(`✅ Loaded ${result.data.length} items`);
+        setMenuItems(result.data);
       } else {
-        throw lastError || new Error('Cannot load menu from any URL');
+        console.log('⚠️  Menu is empty');
+        setMenuItems([]);
       }
     } catch (err: any) {
       console.error('❌ Error loading menu:', err);
@@ -160,41 +137,24 @@ export default function OrderPage() {
 
       console.log('📤 Submitting order:', orderData);
 
-      const urls = [
-        `${API_BASE}/api/orders`,
-        '/api/orders',
-        'http://localhost:8000/api/orders'
-      ];
+      const response = await fetch(`${API_BASE}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify(orderData),
+      });
 
-      let success = false;
-
-      for (const url of urls) {
-        try {
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'ngrok-skip-browser-warning': 'true',
-            },
-            body: JSON.stringify(orderData),
-          });
-
-          if (response.ok) {
-            const result = await response.json();
-            if (result.success) {
-              success = true;
-              break;
-            }
-          }
-        } catch (err) {
-          console.log(`Failed to submit to ${url}`);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          alert('✅ Đặt món thành công! Nhân viên sẽ phục vụ trong giây lát.');
+          setCart([]);
+          setCustomerName('');
+        } else {
+          alert('❌ ' + (result.message || 'Không thể đặt món'));
         }
-      }
-
-      if (success) {
-        alert('✅ Đặt món thành công! Nhân viên sẽ phục vụ trong giây lát.');
-        setCart([]);
-        setCustomerName('');
       } else {
         alert('❌ Không thể đặt món. Vui lòng thử lại.');
       }
@@ -227,6 +187,9 @@ export default function OrderPage() {
           <div className="text-6xl mb-4">❌</div>
           <h1 className="text-white text-2xl mb-2">Không thể tải menu</h1>
           <p className="text-[#8b949e] mb-4">{error}</p>
+          <div className="text-xs text-[#8b949e] mb-4">
+            API: {API_BASE}/api/menu/public
+          </div>
           <button
             onClick={loadMenu}
             className="px-6 py-3 bg-[#238636] text-white rounded-lg hover:bg-[#2ea043]"
@@ -244,7 +207,10 @@ export default function OrderPage() {
         <div className="text-center max-w-md">
           <div className="text-6xl mb-4">📋</div>
           <h1 className="text-white text-2xl mb-2">Thực đơn trống</h1>
-          <p className="text-[#8b949e] mb-4">Chưa có món ăn nào.</p>
+          <p className="text-[#8b949e] mb-4">Chưa có món ăn nào trong database.</p>
+          <div className="text-xs text-[#8b949e] mb-4">
+            Chạy SQL script để thêm data mẫu
+          </div>
           <button
             onClick={loadMenu}
             className="px-6 py-3 bg-[#238636] text-white rounded-lg hover:bg-[#2ea043]"
@@ -259,35 +225,36 @@ export default function OrderPage() {
   return (
     <div className="min-h-screen bg-[#0d1117] pb-24">
       {/* Header */}
-      <div className="bg-[#161b22] border-b border-[#30363d] px-4 py-4 sticky top-0 z-50">
-        <h1 className="text-xl text-white font-bold">Bàn số {tableNumber}</h1>
+      <div className="bg-[#161b22] border-b border-[#30363d] px-4 py-4 sticky top-0 z-50 shadow-lg">
+        <h1 className="text-xl text-white font-bold">🍽️ Bàn số {tableNumber}</h1>
         <p className="text-sm text-[#8b949e]">Chọn món và đặt hàng</p>
       </div>
 
       {/* Customer Name Input */}
       {cart.length > 0 && !customerName && (
-        <div className="bg-yellow-900/20 border-b border-yellow-500 px-4 py-3">
+        <div className="bg-yellow-900/20 border-b border-yellow-500 px-4 py-3 animate-pulse">
           <input
             type="text"
             placeholder="👤 Nhập tên khách hàng..."
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
-            className="w-full bg-[#0d1117] border border-[#30363d] text-white px-4 py-2 rounded-lg"
+            className="w-full bg-[#0d1117] border border-[#30363d] text-white px-4 py-2 rounded-lg focus:outline-none focus:border-[#58a6ff]"
+            autoFocus
           />
         </div>
       )}
 
       {/* Categories */}
-      <div className="px-4 py-4 overflow-x-auto">
+      <div className="px-4 py-4 overflow-x-auto bg-[#0d1117] sticky top-[72px] z-40 border-b border-[#30363d]">
         <div className="flex gap-2">
           {categories.map(cat => (
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id.toString())}
-              className={`px-4 py-2 rounded-lg whitespace-nowrap transition ${
+              className={`px-4 py-2 rounded-lg whitespace-nowrap transition font-medium ${
                 activeCategory === cat.id.toString()
-                  ? 'bg-[#238636] text-white'
-                  : 'bg-[#161b22] text-[#8b949e] border border-[#30363d]'
+                  ? 'bg-[#238636] text-white shadow-lg'
+                  : 'bg-[#161b22] text-[#8b949e] border border-[#30363d] hover:border-[#58a6ff]'
               }`}
             >
               {cat.icon} {cat.name}
@@ -296,33 +263,38 @@ export default function OrderPage() {
         </div>
       </div>
 
+      {/* Menu Items Count */}
+      <div className="px-4 py-2 text-[#8b949e] text-sm">
+        {filteredItems.length} món
+      </div>
+
       {/* Menu Items */}
-      <div className="px-4">
+      <div className="px-4 pb-4">
         <div className="grid grid-cols-1 gap-4">
           {filteredItems.map(item => (
             <div
               key={item.item_id}
-              className="bg-[#161b22] border border-[#30363d] rounded-lg p-4 flex gap-4"
+              className="bg-[#161b22] border border-[#30363d] rounded-lg p-4 flex gap-4 hover:border-[#58a6ff] transition"
             >
               <img
                 src={item.image_url}
                 alt={item.item_name}
-                className="w-20 h-20 object-cover rounded-lg"
+                className="w-20 h-20 object-cover rounded-lg flex-shrink-0"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
                   target.src = 'https://via.placeholder.com/80?text=No+Image';
                 }}
               />
-              <div className="flex-1">
-                <h3 className="text-white font-semibold mb-1">{item.item_name}</h3>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-white font-semibold mb-1 truncate">{item.item_name}</h3>
                 <p className="text-xs text-[#8b949e] mb-2 line-clamp-2">{item.description}</p>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-2">
                   <span className="text-[#58a6ff] font-bold">
                     {item.price.toLocaleString('vi-VN')} ₫
                   </span>
                   <button
                     onClick={() => addToCart(item)}
-                    className="px-3 py-1 bg-[#238636] text-white rounded-lg text-sm hover:bg-[#2ea043]"
+                    className="px-3 py-1 bg-[#238636] text-white rounded-lg text-sm hover:bg-[#2ea043] transition font-medium"
                   >
                     ➕ Thêm
                   </button>
@@ -335,16 +307,16 @@ export default function OrderPage() {
 
       {/* Cart Summary (Fixed Bottom) */}
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-[#161b22] border-t border-[#30363d] p-4 z-50">
+        <div className="fixed bottom-0 left-0 right-0 bg-[#161b22] border-t border-[#30363d] p-4 z-50 shadow-2xl">
           <div className="mb-3 max-h-32 overflow-y-auto">
             {cart.map(item => (
               <div key={item.item_id} className="flex justify-between items-center text-sm mb-2">
-                <span className="text-white">{item.item_name} x{item.quantity}</span>
+                <span className="text-white flex-1">{item.item_name} x{item.quantity}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[#58a6ff]">{(item.price * item.quantity).toLocaleString('vi-VN')} ₫</span>
+                  <span className="text-[#58a6ff] font-bold">{(item.price * item.quantity).toLocaleString('vi-VN')} ₫</span>
                   <button
                     onClick={() => removeFromCart(item.item_id)}
-                    className="text-red-500 font-bold"
+                    className="text-red-500 font-bold hover:text-red-400 transition w-6 h-6 flex items-center justify-center"
                   >
                     ✕
                   </button>
@@ -361,9 +333,9 @@ export default function OrderPage() {
           <button
             onClick={handleSubmitOrder}
             disabled={!customerName.trim()}
-            className="w-full bg-[#238636] text-white py-3 rounded-lg font-bold hover:bg-[#2ea043] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-[#238636] text-white py-3 rounded-lg font-bold hover:bg-[#2ea043] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg"
           >
-            🛎️ Đặt món ({cart.length})
+            🛎️ Đặt món ({cart.length} món)
           </button>
         </div>
       )}
