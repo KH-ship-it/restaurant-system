@@ -38,35 +38,45 @@ export default function TableManagementPage() {
   }, []);
 
   const loadTablesFromAPI = async () => {
-    try {
-      setIsLoading(true);
-      console.log('🔄 Loading tables from:', `${API_URL}/api/tables`);
-      
-      const res = await fetch(`${API_URL}/api/tables`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-      });
+  try {
+    setIsLoading(true);
+    console.log('🔄 Loading tables from:', `${API_URL}/api/tables`);
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+    const res = await fetch(`${API_URL}/api/tables`, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
+    });
 
-      const result = await res.json();
-      console.log('✅ Tables loaded:', result);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      if (result.success && result.data) {
-        setTables(result.data);
-      }
-    } catch (error) {
-      console.error('❌ Error loading tables:', error);
-      alert('Lỗi tải danh sách bàn từ server!');
-    } finally {
-      setIsLoading(false);
+    const result = await res.json();
+    console.log('Tables loaded:', result);
+
+    // FIX: Check result.success và result.data
+    if (result.success && Array.isArray(result.data)) {
+      setTables(
+        result.data.map((t: any) => ({
+          table_id: t.table_id,
+          number: t.number,           //Backend đã alias thành "number"
+          capacity: t.capacity,
+          status: t.status,
+          token: t.qr_code,
+          created_at: t.created_at,
+          updated_at: t.updated_at,
+        }))
+      );
+    } else {
+      console.error('❌ API response invalid:', result);
     }
-  };
+  } catch (err) {
+    console.error('❌ Error loading tables:', err);
+    alert('Lỗi tải danh sách bàn!');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   const filteredTables = tables.filter(t => {
     const matchSearch = t.number.toString().includes(search);
@@ -96,7 +106,7 @@ export default function TableManagementPage() {
       });
 
       const result = await res.json();
-
+      console.log('✅ Tables loaded:', result);
       if (result.success) {
         alert('✅ Thêm bàn thành công!');
         setShowAddModal(false);
@@ -128,9 +138,7 @@ export default function TableManagementPage() {
           'ngrok-skip-browser-warning': 'true',
         },
       });
-
       const result = await res.json();
-
       if (result.success) {
         alert('✅ Xóa bàn thành công!');
         await loadTablesFromAPI();
@@ -142,7 +150,6 @@ export default function TableManagementPage() {
       alert('Lỗi xóa bàn!');
     }
   };
-
   const updateTableStatus = async (number: number, newStatus: Table['status']) => {
     const table = tables.find(t => t.number === number);
     if (!table) return;
@@ -160,11 +167,11 @@ export default function TableManagementPage() {
           changeToken: false,
         }),
       });
-
-      const result = await res.json();
+     const result = await res.json();
+     console.log(' Tables loaded:', result);
 
       if (result.success) {
-        alert('✅ Cập nhật trạng thái thành công!');
+        alert(' Cập nhật trạng thái thành công!');
         await loadTablesFromAPI();
       } else {
         alert(result.error || 'Lỗi cập nhật!');
@@ -208,7 +215,6 @@ export default function TableManagementPage() {
       case 'RESERVED': return 'Đã đặt';
     }
   };
-
   const stats = {
     total: tables.length,
     available: tables.filter(t => t.status === 'AVAILABLE').length,
