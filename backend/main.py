@@ -1,20 +1,35 @@
 # ========================================
-# FILE: backend/main.py - WITH TABLES ROUTER
+# FILE: backend/main.py - FIXED VERSION
 # ========================================
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import traceback
 
-# ✅ Import routers
+# ✅ Import auth router
 from routes import auth
 
-# ✅ Import tables router
+# ✅ Import tables router with detailed error handling
+TABLES_AVAILABLE = False
+tables = None
+
 try:
     from routes import tables
-    print("✅ Tables router imported")
+    print("✅ Tables module imported successfully")
+    
+    # Check if router exists
+    if hasattr(tables, 'router'):
+        TABLES_AVAILABLE = True
+        print("✅ Tables router found")
+    else:
+        print("❌ Tables module has no 'router' attribute")
+        
 except ImportError as e:
-    print(f"⚠️  Tables router not available: {e}")
-    tables = None
+    print(f"❌ ImportError loading tables: {e}")
+    traceback.print_exc()
+except Exception as e:
+    print(f"❌ Unexpected error loading tables: {e}")
+    traceback.print_exc()
 
 # ========================================
 # CREATE APP
@@ -51,7 +66,8 @@ async def health_check():
     return {
         "status": "ok",
         "message": "Server is running",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "tables_available": TABLES_AVAILABLE
     }
 
 # ========================================
@@ -60,14 +76,18 @@ async def health_check():
 
 # Auth router (required)
 app.include_router(auth.router)
-print("✅ Auth router included at /api/auth")
+print("✅ Auth router registered at /api/auth")
 
 # Tables router (optional)
-if tables:
-    app.include_router(tables.router)
-    print("✅ Tables router included at /api/tables")
+if TABLES_AVAILABLE and tables:
+    try:
+        app.include_router(tables.router)
+        print("✅ Tables router registered at /api/tables")
+    except Exception as e:
+        print(f"❌ Error registering tables router: {e}")
+        traceback.print_exc()
 else:
-    print("⚠️  Tables router not included")
+    print("⚠️  Tables router NOT registered")
 
 # ========================================
 # ROOT ENDPOINT
@@ -84,7 +104,7 @@ async def root():
         },
     }
     
-    if tables:
+    if TABLES_AVAILABLE:
         endpoints["tables"] = {
             "list": "GET /api/tables",
             "create": "POST /api/tables",
@@ -96,7 +116,8 @@ async def root():
     return {
         "message": "Restaurant Management API",
         "version": "1.0.0",
-        "endpoints": endpoints
+        "endpoints": endpoints,
+        "tables_available": TABLES_AVAILABLE
     }
 
 # ========================================
@@ -111,8 +132,10 @@ async def startup():
     print("📝 Docs: http://localhost:8000/docs")
     print("🔐 Auth: http://localhost:8000/api/auth")
     
-    if tables:
+    if TABLES_AVAILABLE:
         print("🪑 Tables: http://localhost:8000/api/tables")
+    else:
+        print("❌ Tables: NOT AVAILABLE")
     
     print("=" * 60 + "\n")
 
