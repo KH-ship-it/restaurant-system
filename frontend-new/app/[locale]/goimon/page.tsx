@@ -65,10 +65,10 @@ export default function OrderPage() {
       }
 
       const result = await response.json();
-      console.log('✅ Menu data:', result);
+      console.log(' Menu data:', result);
 
       if (result.success && result.data && result.data.length > 0) {
-        console.log(`✅ Loaded ${result.data.length} items`);
+        console.log(` Loaded ${result.data.length} items`);
         setMenuItems(result.data);
       } else {
         console.log('⚠️  Menu is empty');
@@ -122,7 +122,6 @@ export default function OrderPage() {
       alert('Giỏ hàng trống!');
       return;
     }
-
     try {
       const orderData = {
         table_number: parseInt(tableNumber),
@@ -145,11 +144,14 @@ export default function OrderPage() {
         },
         body: JSON.stringify(orderData),
       });
+      console.log('📡 Response status:', response.status);
+const responseText = await response.text();
+console.log('📄 Response body:', responseText);
 
       if (response.ok) {
         const result = await response.json();
         if (result.success) {
-          alert('✅ Đặt món thành công! Nhân viên sẽ phục vụ trong giây lát.');
+          alert(' Đặt món thành công! Nhân viên sẽ phục vụ trong giây lát.');
           setCart([]);
           setCustomerName('');
         } else {
