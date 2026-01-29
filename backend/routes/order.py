@@ -3,10 +3,158 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from config.database import get_db
 from models.schemas import OrderCreate, OrderStatusUpdate
 from middleware.auth import verify_token
-from typing import Optional
+from pydantic import BaseModel
+from typing import Optional, List
 from datetime import datetime
 
 router = APIRouter(prefix="/api/orders", tags=["Order Management"])
+
+# ========================================
+# MODELS CHO PUBLIC ORDER (khách hàng đặt món)
+# ========================================
+
+class PublicOrderItem(BaseModel):
+    item_id: int
+    quantity: int
+    price: float
+
+class PublicOrderCreate(BaseModel):
+    table_number: int  # Số bàn (VD: 5)
+    customer_name: str  # Tên khách hàng
+    items: List[PublicOrderItem]
+    total_amount: float
+    notes: Optional[str] = None
+
+# ========================================
+# PUBLIC ENDPOINT - KHÁCH HÀNG ĐẶT MÓN QUA QR CODE
+# KHÔNG CẦN AUTHENTICATION ⭐
+# ========================================
+
+@router.post("/public", status_code=status.HTTP_201_CREATED)
+def create_public_order(
+    order_data: PublicOrderCreate,
+    conn=Depends(get_db)
+):
+    """
+     PUBLIC ENDPOINT - Khách hàng đặt món qua QR code
+    KHÔNG CẦN TOKEN
+    
+    Request body:
+    {
+        "table_number": 5,
+        "customer_name": "Nguyễn Văn A",
+        "items": [
+            {"item_id": 1, "quantity": 2, "price": 25000},
+            {"item_id": 3, "quantity": 1, "price": 35000}
+        ],
+        "total_amount": 85000,
+        "notes": "Không đá"
+    }
+    """
+    cursor = conn.cursor()
+    
+    try:
+        print(f"\n📱 [PUBLIC ORDER] Table {order_data.table_number} - {order_data.customer_name}")
+        print(f"   Items: {len(order_data.items)} | Total: {order_data.total_amount:,}đ")
+        
+        # 1. Tìm table_id từ table_number
+        cursor.execute("""
+            SELECT table_id, status FROM dining_tables 
+            WHERE table_number = %s
+        """, (order_data.table_number,))
+        
+        table = cursor.fetchone()
+        if not table:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy bàn số {order_data.table_number}"
+            )
+        
+        table_id = table['table_id']
+        print(f"   ✓ Found table_id: {table_id} (status: {table['status']})")
+        
+        # 2. Tạo order với RETURNING (PostgreSQL)
+        cursor.execute("""
+            INSERT INTO orders (
+                table_id,
+                customer_name,
+                total_amount,
+                status,
+                notes
+            )
+            VALUES (%s, %s, %s, 'PENDING', %s)
+            RETURNING order_id
+        """, (
+            table_id,
+            order_data.customer_name,
+            order_data.total_amount,
+            order_data.notes
+        ))
+        
+        # Lấy order_id từ RETURNING
+        result = cursor.fetchone()
+        order_id = result['order_id']
+        print(f"   ✓ Order created: #{order_id}")
+        
+        # 3. Thêm order items
+        for item in order_data.items:
+            cursor.execute("""
+                INSERT INTO order_items (order_id, item_id, quantity, price)
+                VALUES (%s, %s, %s, %s)
+            """, (order_id, item.item_id, item.quantity, item.price))
+        print(f"   ✓ {len(order_data.items)} items added")
+        
+        # 4. Cập nhật trạng thái bàn thành OCCUPIED
+        cursor.execute("""
+            UPDATE dining_tables 
+            SET status = 'OCCUPIED'
+            WHERE table_id = %s
+        """, (table_id,))
+        print(f"   ✓ Table {order_data.table_number} → OCCUPIED")
+        
+        # 5. Thêm vào kitchen orders để bếp thấy
+        cursor.execute("""
+            INSERT INTO kitchen_orders (order_id, status)
+            VALUES (%s, 'WAITING')
+        """, (order_id,))
+        print(f"   ✓ Kitchen order created")
+        
+        conn.commit()
+        cursor.close()
+        
+        print(f" [PUBLIC ORDER] Bàn {order_data.table_number} đặt món thành công!")
+        
+        return {
+            "success": True,
+            "message": "Đặt món thành công! Nhân viên sẽ phục vụ trong giây lát.",
+            "data": {
+                "order_id": order_id,
+                "table_number": order_data.table_number,
+                "customer_name": order_data.customer_name,
+                "total_amount": order_data.total_amount,
+                "status": "PENDING",
+                "created_at": datetime.now().isoformat()
+            }
+        }
+        
+    except HTTPException:
+        conn.rollback()
+        cursor.close()
+        raise
+    except Exception as e:
+        conn.rollback()
+        cursor.close()
+        print(f"❌ [PUBLIC ORDER ERROR]: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Không thể tạo đơn hàng: {str(e)}"
+        )
+
+# ========================================
+# STAFF ENDPOINTS - CẦN AUTHENTICATION 
+# ========================================
 
 @router.get("")
 def get_orders(
@@ -17,13 +165,13 @@ def get_orders(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """Get all orders with filters"""
+    """ Lấy danh sách đơn hàng - Nhân viên"""
     cursor = conn.cursor()
     
     query = """
         SELECT o.*, t.table_number, e.full_name as employee_name
         FROM orders o
-        LEFT JOIN tables t ON o.table_id = t.table_id
+        LEFT JOIN dining_tables t ON o.table_id = t.table_id
         LEFT JOIN employees e ON o.employee_id = e.employee_id
         WHERE 1=1
     """
@@ -69,7 +217,7 @@ def create_order(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """Create new order"""
+    """ Tạo đơn hàng - Nhân viên"""
     cursor = conn.cursor()
     
     try:
@@ -78,7 +226,7 @@ def create_order(
         cursor.execute("""
             INSERT INTO orders (table_id, employee_id, customer_id, total_amount, status)
             VALUES (%s, %s, %s, %s, 'PENDING')
-            RETURNING *
+            RETURNING order_id
         """, (
             order_data.table_id,
             current_user.get('employeeId'),
@@ -86,8 +234,8 @@ def create_order(
             total_amount
         ))
         
-        order = cursor.fetchone()
-        order_id = order['order_id']
+        result = cursor.fetchone()
+        order_id = result['order_id']
         
         for item in order_data.items:
             cursor.execute("""
@@ -95,10 +243,19 @@ def create_order(
                 VALUES (%s, %s, %s, %s)
             """, (order_id, item.item_id, item.quantity, item.price))
         
-        cursor.execute("UPDATE tables SET status = 'OCCUPIED' WHERE table_id = %s", (order_data.table_id,))
+        cursor.execute("UPDATE dining_tables SET status = 'OCCUPIED' WHERE table_id = %s", (order_data.table_id,))
         cursor.execute("INSERT INTO kitchen_orders (order_id, status) VALUES (%s, 'WAITING')", (order_id,))
         
         conn.commit()
+        
+        # Fetch created order
+        cursor.execute("""
+            SELECT o.*, t.table_number
+            FROM orders o
+            LEFT JOIN dining_tables t ON o.table_id = t.table_id
+            WHERE o.order_id = %s
+        """, (order_id,))
+        order = cursor.fetchone()
         cursor.close()
         
         return {"success": True, "message": "Order created successfully", "data": order}
@@ -108,6 +265,49 @@ def create_order(
         cursor.close()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/{order_id}")
+def get_order_detail(
+    order_id: int,
+    current_user: dict = Depends(verify_token),
+    conn=Depends(get_db)
+):
+    """Lấy chi tiết đơn hàng - Nhân viên"""
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT o.*, t.table_number, e.full_name as employee_name
+            FROM orders o
+            LEFT JOIN dining_tables t ON o.table_id = t.table_id
+            LEFT JOIN employees e ON o.employee_id = e.employee_id
+            WHERE o.order_id = %s
+        """, (order_id,))
+        order = cursor.fetchone()      
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy đơn hàng #{order_id}"
+            )
+        
+        cursor.execute("""
+            SELECT oi.*, m.item_name, m.image_url
+            FROM order_items oi
+            JOIN menu_items m ON oi.item_id = m.item_id
+            WHERE oi.order_id = %s
+        """, (order_id,))
+        
+        order['items'] = cursor.fetchall()
+        cursor.close()        
+        return {"success": True, "data": order}    
+    except HTTPException:
+        cursor.close()
+        raise
+    except Exception as e:
+        cursor.close()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi lấy chi tiết đơn hàng: {str(e)}"
+        )
+
 @router.put("/{order_id}/status")
 def update_order_status(
     order_id: int,
@@ -115,7 +315,7 @@ def update_order_status(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """Update order status"""
+    """ Cập nhật trạng thái đơn hàng - Nhân viên"""
     cursor = conn.cursor()
     
     try:
@@ -125,15 +325,27 @@ def update_order_status(
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
         
-        cursor.execute(
-            "UPDATE orders SET status = %s WHERE order_id = %s RETURNING *",
-            (status_data.status.upper(), order_id)
-        )
+        cursor.execute("""
+            UPDATE orders 
+            SET status = %s
+            WHERE order_id = %s
+        """, (status_data.status.upper(), order_id))
         
+        cursor.execute("""
+            SELECT o.*, t.table_number
+            FROM orders o
+            LEFT JOIN dining_tables t ON o.table_id = t.table_id
+            WHERE o.order_id = %s
+        """, (order_id,))
         updated_order = cursor.fetchone()
         
+        # Nếu hoàn thành hoặc hủy → Giải phóng bàn
         if status_data.status.upper() in ['COMPLETED', 'CANCELLED']:
-            cursor.execute("UPDATE tables SET status = 'EMPTY' WHERE table_id = %s", (order['table_id'],))
+            cursor.execute("""
+                UPDATE dining_tables 
+                SET status = 'AVAILABLE'
+                WHERE table_id = %s
+            """, (order['table_id'],))
         
         conn.commit()
         cursor.close()
@@ -145,28 +357,20 @@ def update_order_status(
         cursor.close()
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# ✅ THÊM MỚI: Endpoint hủy đơn hàng
 @router.put("/{order_id}/cancel")
 def cancel_order(
     order_id: int,
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """
-    Hủy đơn hàng
-    - Chỉ hủy được đơn ở trạng thái PENDING hoặc PREPARING
-    - Giải phóng bàn về AVAILABLE/EMPTY
-    - Update trạng thái order thành CANCELLED
-    """
+    """ Hủy đơn hàng - Nhân viên"""
     cursor = conn.cursor()
     
     try:
-        # 1. Kiểm tra order có tồn tại không
         cursor.execute("""
             SELECT o.order_id, o.table_id, o.status, o.total_amount, t.table_number
             FROM orders o
-            LEFT JOIN tables t ON o.table_id = t.table_id
+            LEFT JOIN dining_tables t ON o.table_id = t.table_id
             WHERE o.order_id = %s
         """, (order_id,))
         
@@ -178,37 +382,28 @@ def cancel_order(
                 detail=f"Không tìm thấy đơn hàng #{order_id}"
             )
         
-        # 2. Kiểm tra trạng thái có được phép hủy không
         current_status = order['status']
         allowed_cancel_statuses = ['PENDING', 'PREPARING', 'WAITING']
         
         if current_status not in allowed_cancel_statuses:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Không thể hủy đơn hàng ở trạng thái '{current_status}'. Chỉ hủy được đơn 'Chờ xử lý' hoặc 'Đang chuẩn bị'."
+                detail=f"Không thể hủy đơn hàng ở trạng thái '{current_status}'."
             )
         
-        # 3. Update trạng thái order thành CANCELLED
         cursor.execute("""
             UPDATE orders
-            SET status = 'CANCELLED',
-                updated_at = NOW()
+            SET status = 'CANCELLED'
             WHERE order_id = %s
-            RETURNING *
         """, (order_id,))
         
-        cancelled_order = cursor.fetchone()
-        
-        # 4. Giải phóng bàn về AVAILABLE/EMPTY
         if order['table_id']:
             cursor.execute("""
-                UPDATE tables
-                SET status = 'AVAILABLE',
-                    updated_at = NOW()
+                UPDATE dining_tables
+                SET status = 'AVAILABLE'
                 WHERE table_id = %s
             """, (order['table_id'],))
         
-        # 5. Update kitchen_orders nếu có
         cursor.execute("""
             UPDATE kitchen_orders
             SET status = 'CANCELLED'
@@ -225,11 +420,7 @@ def cancel_order(
                 "order_id": order_id,
                 "table_number": order.get('table_number'),
                 "previous_status": current_status,
-                "new_status": "CANCELLED",
-                "table_id": order['table_id'],
-                "total_amount": order['total_amount'],
-                "cancelled_by": current_user.get('username'),
-                "cancelled_at": datetime.now().isoformat()
+                "new_status": "CANCELLED"
             }
         }
     
@@ -245,54 +436,10 @@ def cancel_order(
             detail=f"Hủy đơn hàng thất bại: {str(e)}"
         )
 
-
-# ✅ THÊM MỚI: Lấy chi tiết một đơn hàng
-@router.get("/{order_id}")
-def get_order_detail(
-    order_id: int,
-    current_user: dict = Depends(verify_token),
-    conn=Depends(get_db)
-):
-    """Get order detail by ID"""
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute("""
-            SELECT o.*, t.table_number, e.full_name as employee_name
-            FROM orders o
-            LEFT JOIN tables t ON o.table_id = t.table_id
-            LEFT JOIN employees e ON o.employee_id = e.employee_id
-            WHERE o.order_id = %s
-        """, (order_id,))
-        
-        order = cursor.fetchone()
-        
-        if not order:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Không tìm thấy đơn hàng #{order_id}"
-            )
-        
-        # Lấy danh sách items
-        cursor.execute("""
-            SELECT oi.*, m.item_name, m.image_url
-            FROM order_items oi
-            JOIN menu_items m ON oi.item_id = m.item_id
-            WHERE oi.order_id = %s
-        """, (order_id,))
-        
-        order['items'] = cursor.fetchall()
-        
-        cursor.close()
-        
-        return {"success": True, "data": order}
-        
-    except HTTPException:
-        cursor.close()
-        raise
-    except Exception as e:
-        cursor.close()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi lấy chi tiết đơn hàng: {str(e)}"
-        )
+print(" Order router loaded (PostgreSQL):")
+print("    POST /api/orders/public - Khách hàng đặt món (no auth)")
+print("    GET  /api/orders - Nhân viên xem danh sách (auth required)")
+print("    POST /api/orders - Nhân viên tạo order (auth required)")
+print("    GET  /api/orders/{id} - Chi tiết order (auth required)")
+print("   PUT  /api/orders/{id}/status - Cập nhật trạng thái (auth required)")
+print("   PUT  /api/orders/{id}/cancel - Hủy order (auth required)")
