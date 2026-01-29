@@ -5,6 +5,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Optional
 from pydantic import BaseModel
+from datetime import datetime
 from config.database import get_db_connection
 from utils.auth import get_current_user
 
@@ -25,11 +26,12 @@ class TableUpdate(BaseModel):
     changeToken: Optional[bool] = False
 
 # ========================================
-# GET ALL TABLES
+# GET ALL TABLES - FIXED WITH BOTH ROUTES
 # ========================================
 
-@router.get("/")
-async def get_tables():
+@router.get("")  # Handles /api/tables
+@router.get("/")  # Handles /api/tables/
+async def get_tables(current_user: dict = Depends(get_current_user)):
     """
     Get all tables
     Requires authentication
@@ -98,6 +100,7 @@ async def get_tables():
 # CREATE TABLE
 # ========================================
 
+@router.post("")
 @router.post("/")
 async def create_table(
     table: TableCreate,

@@ -163,8 +163,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
             )
         
         # Lấy allowed routes
-        allowed_routes = ROLE_ROUTES.get(user['role'], [])
-        
+        allowed_routes = ROLE_ROUTES.get(user['role'], [])      
         return {
             "success": True,
             "data": {
@@ -179,13 +178,10 @@ async def get_me(current_user: dict = Depends(get_current_user)):
                 "allowed_routes": allowed_routes,
                 "default_route": DEFAULT_ROUTES.get(user['role'], "/")  # ✅ Thêm default_route
             }
-        }
-    
+        } 
     finally:
         cursor.close()
         conn.close()
-
-
 @router.post("/logout")
 async def logout(current_user: dict = Depends(get_current_user)):
     """
@@ -196,9 +192,7 @@ async def logout(current_user: dict = Depends(get_current_user)):
         "success": True,
         "message": "Đăng xuất thành công"
     }
-
-
-# ==================== Helper Functions ====================
+# ==================== Helper Functions ====================,
 
 def check_route_permission(user_role: str, requested_route: str) -> bool:
     """
@@ -216,10 +210,7 @@ def check_route_permission(user_role: str, requested_route: str) -> bool:
     for allowed_route in allowed_routes:
         if requested_route.startswith(allowed_route):
             return True
-    
     return False
-
-
 def require_role_permission(requested_route: str):
     """
     Dependency để kiểm tra quyền truy cập route

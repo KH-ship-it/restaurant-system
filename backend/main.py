@@ -1,4 +1,4 @@
-# main.py - FIXED FOR NGROK
+# backend/main.py - FIXED FOR NGROK + LOCALHOST
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 # Import routes
-from routes import auth, employees, menu, orders, tables, kitchen
+from routes import auth, employees, menu, order, tables, kitchen
 
 # ==================== LIFESPAN ====================
 
@@ -16,8 +16,9 @@ async def lifespan(app: FastAPI):
     print("\n" + "="*60)
     print("🚀 Restaurant Management System API Starting...")
     print("="*60)
-    print(f"📍 API Base: http://localhost:8000")
-    print(f"📖 Docs: http://localhost:8000/docs")
+    print(f"📍 Local: http://localhost:8000")
+    print(f"📍 Ngrok: Check your ngrok dashboard")
+    print(f"📖 Docs: /docs")
     print("="*60 + "\n")
     
     yield
@@ -31,94 +32,132 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Restaurant Management API",
     description="API for Restaurant Management System",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan
 )
 
 # ==================== CORS MIDDLEWARE - NGROK COMPATIBLE ====================
 
+# ⭐ CRITICAL: Allow ALL origins for ngrok
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001", 
-        "https://*.ngrok-free.dev",
-        "https://downier-winston-theological.ngrok-free.dev",
-        "*"  # Allow all as fallback
-    ],
+    allow_origins=["*"],  # Allow ALL origins (ngrok requirement)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 
-# ==================== NGROK MIDDLEWARE ====================
+print("✅ CORS configured: Allow ALL origins")
+
+# ==================== MIDDLEWARE FOR NGROK ====================
 
 @app.middleware("http")
-async def add_ngrok_headers(request: Request, call_next):
-    """Add headers for ngrok compatibility"""
+async def add_process_time_header(request: Request, call_next):
+    """Add custom headers for ngrok compatibility"""
     response = await call_next(request)
     
     # Add CORS headers explicitly
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-    response.headers["Access-Control-Allow-Headers"] = "*"
     response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
     
     return response
 
 # ==================== OPTIONS HANDLER ====================
 
-@app.options("/{rest_of_path:path}")
-async def preflight_handler(rest_of_path: str):
-    """Handle preflight requests"""
+@app.options("/{full_path:path}")
+async def preflight_handler(full_path: str):
+    """Handle all OPTIONS (preflight) requests"""
     return JSONResponse(
         content={"message": "OK"},
         headers={
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Methods": "*",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Credentials": "true",
-        }
+        },
+        status_code=200
     )
 
-# ==================== ROOT ENDPOINT ====================
+# ==================== ROOT ENDPOINTS ====================
 
 @app.get("/")
 async def root():
     """API health check"""
     return {
         "status": "online",
-        "message": "Restaurant Management API is running",
-        "version": "1.0.0",
-        "cors": "enabled",
-        "ngrok": "compatible"
+        "message": "Restaurant Management API",
+        "version": "2.0.0",
+        "cors": "enabled (all origins)",
+        "endpoints": {
+            "health": "/health",
+            "docs": "/docs",
+            "employees": "/api/employees",
+            "menu": "/api/menu",
+            "orders": "/api/orders"
+        }
     }
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "version": "2.0.0",
+        "cors": "enabled"
+    }
 
 # ==================== INCLUDE ROUTERS ====================
 
-app.include_router(auth.router)
-app.include_router(employees.router)
-app.include_router(menu.router)
-app.include_router(orders.router)
-app.include_router(tables.router)
-app.include_router(kitchen.router)
+try:
+    app.include_router(auth.router)
+    print("✅ Auth router loaded")
+except Exception as e:
+    print(f"⚠️ Auth router failed: {e}")
+
+try:
+    app.include_router(employees.router)
+    print("✅ Employees router loaded")
+except Exception as e:
+    print(f"⚠️ Employees router failed: {e}")
+
+try:
+    app.include_router(menu.router)
+    print("✅ Menu router loaded")
+except Exception as e:
+    print(f"⚠️ Menu router failed: {e}")
+
+try:
+    app.include_router(order.router)
+    print("✅ Order router loaded")
+except Exception as e:
+    print(f"⚠️ Order router failed: {e}")
+
+try:
+    app.include_router(tables.router)
+    print("✅ Tables router loaded")
+except Exception as e:
+    print(f"⚠️ Tables router failed: {e}")
+
+try:
+    app.include_router(kitchen.router)
+    print("✅ Kitchen router loaded")
+except Exception as e:
+    print(f"⚠️ Kitchen router failed: {e}")
 
 # ==================== ERROR HANDLERS ====================
 
 @app.exception_handler(404)
-async def not_found_handler(request, exc):
+async def not_found_handler(request: Request, exc):
     return JSONResponse(
         status_code=404,
         content={
             "success": False,
-            "error": "Endpoint not found",
-            "path": str(request.url)
+            "error": "Not Found",
+            "path": str(request.url.path),
+            "message": f"Endpoint {request.url.path} không tồn tại"
         },
         headers={
             "Access-Control-Allow-Origin": "*"
@@ -126,12 +165,14 @@ async def not_found_handler(request, exc):
     )
 
 @app.exception_handler(500)
-async def internal_error_handler(request, exc):
+async def internal_error_handler(request: Request, exc):
+    print(f"❌ Internal error: {exc}")
     return JSONResponse(
         status_code=500,
         content={
             "success": False,
-            "error": "Internal server error"
+            "error": "Internal Server Error",
+            "message": str(exc)
         },
         headers={
             "Access-Control-Allow-Origin": "*"
@@ -145,11 +186,14 @@ if __name__ == "__main__":
     
     print("\n" + "="*60)
     print("🔧 Starting Uvicorn Server...")
+    print("="*60)
+    print("💡 IMPORTANT: After starting, run ngrok:")
+    print("   ngrok http 8000")
     print("="*60 + "\n")
     
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+        host="0.0.0.0",  # Listen on all interfaces (required for ngrok)
         port=8000,
         reload=True,
         log_level="info"
