@@ -21,6 +21,15 @@ export default function LoginPage() {
   const currentLocale = pathname.startsWith('/vi') ? 'vi' : 'en';
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+  //  ROLE TO ROUTE MAPPING - FIXED
+  const ROLE_ROUTES: Record<string, string> = {
+    'OWNER': '/thongke',      // Chủ nhà hàng → Thống kê
+    'ADMIN': '/thongke',      // Admin → Thống kê
+    'KITCHEN': '/order',      // Đầu bếp → Order
+    'CASHIER': '/thungan',    // Thu ngân → Thu ngân
+    'STAFF': '/order',        // Nhân viên phục vụ → Order
+  };
+
   // Check API connection on mount
   useEffect(() => {
     checkAPIConnection();
@@ -35,7 +44,7 @@ export default function LoginPage() {
           'ngrok-skip-browser-warning': 'true',
         },
       });
-
+      
       if (response.ok) {
         console.log('✅ API is online');
         setApiStatus('ok');
@@ -61,7 +70,9 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    console.log('🔐 Submitting login form...');
+    console.log('\n' + '='.repeat(60));
+    console.log('🔐 LOGIN ATTEMPT');
+    console.log('='.repeat(60));
     console.log('Username:', formData.username);
     console.log('API URL:', API_URL);
 
@@ -72,68 +83,77 @@ export default function LoginPage() {
 
       if (response.data.success) {
         // Save to localStorage
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        localStorage.setItem('token', response.data.token);
+        const user = response.data.user;
+        const token = response.data.token;
+        
+        // 🔥 FIX: Save token with BOTH keys for compatibility
+        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('token', token);           // ← NEW: For table management page
+        localStorage.setItem('access_token', token);    // ← OLD: For API client
+        
+        console.log('💾 Saved to localStorage:');
+        console.log('  - user:', JSON.stringify(user));
+        console.log('  - token:', token.substring(0, 20) + '...');
+        console.log('  - access_token:', token.substring(0, 20) + '...');
         
         if (rememberMe) {
           localStorage.setItem('rememberMe', 'true');
         }
         
-        const userRole = response.data.user.role;
-        const defaultRoute = response.data.default_route;
+        const userRole = user.role;
         
-        console.log('✅ Login successful!');
-        console.log('User role:', userRole);
-        console.log('Default route:', defaultRoute);
+        console.log('\n✅ LOGIN SUCCESSFUL');
+        console.log('👤 User:', user.username);
+        console.log('🎭 Role:', userRole);
+        console.log('📛 Full Name:', user.fullName);
         
-        // Redirect based on role or default_route
-        if (defaultRoute) {
-          router.push(`/${currentLocale}${defaultRoute}`);
+        //  Get redirect route based on role
+        const redirectRoute = ROLE_ROUTES[userRole];
+        
+        if (redirectRoute) {
+          console.log('🔀 Redirecting to:', `/${currentLocale}${redirectRoute}`);
+          console.log('='.repeat(60) + '\n');
+          router.push(`/${currentLocale}${redirectRoute}`);
         } else {
-          // Fallback redirect logic
-          if (userRole === 'OWNER') {
-            router.push(`/${currentLocale}/thongke`);
-          } else if (userRole === 'CASHIER') {
-            router.push(`/${currentLocale}/thungan`);
-          } else if (userRole === 'EMPLOYEE' || userRole === 'staff') {
-            router.push(`/${currentLocale}/order`);
-          } else {
-            router.push(`/${currentLocale}/dashboard`);
-          }
+          // Fallback if role not found
+          console.warn('⚠️  Role not found in mapping, using /order as fallback');
+          console.log('='.repeat(60) + '\n');
+          router.push(`/${currentLocale}/order`);
         }
+        
       } else {
         throw new Error('Login failed: ' + (response.data.message || 'Unknown error'));
       }
     } catch (err: any) {
-      console.error('❌ Login error:', err);
+      console.error('\n❌ LOGIN ERROR');
+      console.error(err);
+      console.log('='.repeat(60) + '\n');
       
-      // Extract error message
       let errorMessage = 'Đăng nhập thất bại. Vui lòng thử lại.';
       
       if (err.response?.data?.detail) {
         errorMessage = err.response.data.detail;
       } else if (err.message) {
         errorMessage = err.message;
-      }
-      
+      }     
       setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
-
+  
   // Show loading state while checking API
   if (apiStatus === 'checking') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <div className="text-center">
-          <div className="text-6xl mb-4 animate-bounce">🔐</div>
-          <div className="text-gray-600">Đang kiểm tra kết nối...</div>
+          <div className="text-6xl mb-4 animate-bounce">🔍</div>
+          <div className="text-gray-600 text-lg">Đang kiểm tra kết nối...</div>
         </div>
       </div>
     );
   }
-
+  
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {/* Language Selector */}
@@ -194,7 +214,7 @@ export default function LoginPage() {
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               <div className="flex items-start gap-2">
-                <span className="text-lg">⚠️</span>
+                <span className="text-lg">❌</span>
                 <div className="flex-1">
                   <div className="font-medium mb-1">Lỗi đăng nhập</div>
                   <div>{error}</div>
@@ -207,7 +227,7 @@ export default function LoginPage() {
           {apiStatus === 'error' && (
             <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg text-sm">
               <div className="flex items-start gap-2">
-                <span className="text-lg">🔧</span>
+                <span className="text-lg">⚠️</span>
                 <div className="flex-1">
                   <div className="font-medium mb-1">Server không khả dụng</div>
                   <div className="text-xs mb-2">
@@ -217,7 +237,7 @@ export default function LoginPage() {
                     onClick={checkAPIConnection}
                     className="text-xs underline hover:no-underline"
                   >
-                    Thử kết nối lại
+                    🔄 Thử kết nối lại
                   </button>
                 </div>
               </div>
@@ -286,37 +306,25 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Demo Accounts */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-xs text-gray-600 font-semibold mb-2">
-              💡 Tài khoản demo:
-            </p>
-            <div className="text-xs text-gray-600 space-y-2">
-              <div>
-                <div className="font-medium text-gray-700 mb-1">Chủ nhà hàng:</div>
-                <code className="bg-white px-2 py-1 rounded border border-gray-200 text-xs">
-                  owner / password
-                </code>
-              </div>
-              <div>
-                <div className="font-medium text-gray-700 mb-1">Thu ngân:</div>
-                <code className="bg-white px-2 py-1 rounded border border-gray-200 text-xs">
-                  cashier / password
-                </code>
-              </div>
-            </div>
-          </div>
-
           {/* Debug Info */}
           <div className="mt-4 text-center">
             <button
               type="button"
               onClick={() => {
-                alert(`API URL: ${API_URL}\nStatus: ${apiStatus}`);
+                const token = localStorage.getItem('token');
+                const accessToken = localStorage.getItem('access_token');
+                const user = localStorage.getItem('user');
+                console.log('📊 Debug Info:');
+                console.log('  API URL:', API_URL);
+                console.log('  Status:', apiStatus);
+                console.log('  token:', token ? token.substring(0, 20) + '...' : 'null');
+                console.log('  access_token:', accessToken ? accessToken.substring(0, 20) + '...' : 'null');
+                console.log('  user:', user);
+                alert(`API URL: ${API_URL}\nStatus: ${apiStatus}\ntoken: ${token ? 'Có ✅' : 'Không ❌'}\naccess_token: ${accessToken ? 'Có ✅' : 'Không ❌'}\nUser: ${user ? 'Có ✅' : 'Không ❌'}`);
               }}
               className="text-xs text-gray-400 hover:text-gray-600 underline"
             >
-              Debug Info
+              🐛 Debug Info
             </button>
           </div>
         </div>

@@ -25,6 +25,7 @@ export default function TableManagementPage() {
   const [currentEditTable, setCurrentEditTable] = useState<Table | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const CUSTOMER_APP_URL = 'https://frontend-new-mu-one.vercel.app';
@@ -34,25 +35,32 @@ export default function TableManagementPage() {
   };
 
   // ========================================
-  // CHECK AUTHENTICATION
+  //  FIXED: CHECK BOTH POSSIBLE TOKEN KEYS
   // ========================================
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
+    if (typeof window === 'undefined') return;
+    console.log(' Checking authentication...');
+    
+    //  Try both possible token keys
+    const storedToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+    const storedUser = localStorage.getItem('user');
 
-    if (!storedToken || !user) {
-      alert('Vui lòng đăng nhập!');
+    console.log('Token exists:', !!storedToken);
+    console.log('User exists:', !!storedUser);
+    console.log('Token key used:', localStorage.getItem('token') ? 'token' : 'access_token');
+    if (!storedToken || !storedUser) {
+      console.log('No auth found, redirecting to login...');
       router.push('/vi/login');
       return;
     }
-
+    console.log(' Auth found, loading tables...');
     setToken(storedToken);
+    setIsAuthChecking(false);
     loadTablesFromAPI(storedToken);
   }, []);
 
   // ========================================
   // LOAD TABLES
-  // ========================================
   const loadTablesFromAPI = async (authToken: string) => {
     try {
       setIsLoading(true);
@@ -62,27 +70,37 @@ export default function TableManagementPage() {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`, // ✅ ADD TOKEN
+          'Authorization': `Bearer ${authToken}`,
           'ngrok-skip-browser-warning': 'true',
         },
       });
 
+      console.log('Response status:', res.status);
+
       if (res.status === 401) {
+        console.log('401 Unauthorized - clearing auth and redirecting...');
+        localStorage.removeItem('token');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user');
         alert('Phiên đăng nhập hết hạn!');
         router.push('/vi/login');
         return;
       }
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
 
       const result = await res.json();
-      console.log('✅ Tables loaded:', result);
+      console.log(' Tables loaded:', result);
 
       if (result.success && Array.isArray(result.data)) {
         setTables(result.data);
+      } else {
+        console.warn(' Unexpected response format:', result);
       }
     } catch (err) {
-      console.error('❌ Error loading tables:', err);
+      console.error(' Error loading tables:', err);
       alert('Lỗi tải danh sách bàn!');
     } finally {
       setIsLoading(false);
@@ -94,7 +112,10 @@ export default function TableManagementPage() {
   // ========================================
   const handleAddTable = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!token) return;
+    if (!token) {
+      alert('Vui lòng đăng nhập lại!');
+      return;
+    }
 
     const form = e.currentTarget;
     const number = Number((form.elements.namedItem('tableNumber') as HTMLInputElement).value);
@@ -106,7 +127,7 @@ export default function TableManagementPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // ✅ ADD TOKEN
+          'Authorization': `Bearer ${token}`,
           'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
@@ -119,7 +140,7 @@ export default function TableManagementPage() {
       const result = await res.json();
 
       if (result.success) {
-        alert('✅ Thêm bàn thành công!');
+        alert(' Thêm bàn thành công!');
         setShowAddModal(false);
         form.reset();
         await loadTablesFromAPI(token);
@@ -127,7 +148,7 @@ export default function TableManagementPage() {
         alert(result.detail || result.message || 'Lỗi thêm bàn!');
       }
     } catch (error) {
-      console.error('❌ Error adding table:', error);
+      console.error('Error adding table:', error);
       alert('Lỗi thêm bàn!');
     }
   };
@@ -148,7 +169,7 @@ export default function TableManagementPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // ✅ ADD TOKEN
+          'Authorization': `Bearer ${token}`,
           'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
@@ -160,7 +181,7 @@ export default function TableManagementPage() {
       const result = await res.json();
 
       if (result.success) {
-        alert('✅ Cập nhật thành công!');
+        alert(' Cập nhật thành công!');
         setShowEditModal(false);
         setCurrentEditTable(null);
         await loadTablesFromAPI(token);
@@ -168,7 +189,7 @@ export default function TableManagementPage() {
         alert(result.detail || 'Lỗi cập nhật!');
       }
     } catch (error) {
-      console.error('❌ Error updating table:', error);
+      console.error(' Error updating table:', error);
       alert('Lỗi cập nhật!');
     }
   };
@@ -192,7 +213,7 @@ export default function TableManagementPage() {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // ✅ ADD TOKEN
+          'Authorization': `Bearer ${token}`,
           'ngrok-skip-browser-warning': 'true',
         },
       });
@@ -200,13 +221,13 @@ export default function TableManagementPage() {
       const result = await res.json();
 
       if (result.success) {
-        alert('✅ Xóa bàn thành công!');
+        alert(' Xóa bàn thành công!');
         await loadTablesFromAPI(token);
       } else {
         alert(result.detail || 'Lỗi xóa bàn!');
       }
     } catch (error) {
-      console.error('❌ Error deleting table:', error);
+      console.error(' Error deleting table:', error);
       alert('Lỗi xóa bàn!');
     }
   };
@@ -225,7 +246,7 @@ export default function TableManagementPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // ✅ ADD TOKEN
+          'Authorization': `Bearer ${token}`,
           'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
@@ -237,36 +258,27 @@ export default function TableManagementPage() {
       const result = await res.json();
 
       if (result.success) {
-        alert('✅ Cập nhật trạng thái thành công!');
+        alert(' Cập nhật trạng thái thành công!');
         await loadTablesFromAPI(token);
       } else {
         alert(result.detail || 'Lỗi cập nhật!');
       }
     } catch (error) {
-      console.error('❌ Error updating status:', error);
+      console.error('Error updating status:', error);
       alert('Lỗi cập nhật trạng thái!');
     }
   };
 
-  // ========================================
-  // OPEN QR MODAL
-  // ========================================
   const openQR = (table: Table) => {
     setCurrentQRTable(table);
     setShowQRModal(true);
   };
 
-  // ========================================
-  // OPEN EDIT MODAL
-  // ========================================
   const openEdit = (table: Table) => {
     setCurrentEditTable(table);
     setShowEditModal(true);
   };
 
-  // ========================================
-  // DOWNLOAD QR CODE
-  // ========================================
   const downloadQR = () => {
     if (!currentQRTable) return;
 
@@ -280,9 +292,6 @@ export default function TableManagementPage() {
     document.body.removeChild(link);
   };
 
-  // ========================================
-  // UTILITY FUNCTIONS
-  // ========================================
   const getStatusColor = (status: Table['status']) => {
     switch (status) {
       case 'AVAILABLE':
@@ -318,9 +327,10 @@ export default function TableManagementPage() {
     reserved: tables.filter(t => t.status === 'RESERVED').length,
   };
 
-  // ========================================
-  // LOADING STATE
-  // ========================================
+  if (isAuthChecking) {
+    return null;
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#0d1117] flex items-center justify-center">
@@ -332,18 +342,13 @@ export default function TableManagementPage() {
     );
   }
 
-  // ========================================
-  // MAIN RENDER
-  // ========================================
   return (
     <div className="min-h-screen bg-[#0d1117] p-6">
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white mb-2">Quản Lý Bàn</h1>
         <p className="text-[#8b949e]">Tổng cộng {stats.total} bàn</p>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-[#161b22] border border-[#30363d] p-4 rounded-lg">
           <div className="text-[#8b949e] text-sm mb-1">Tổng số bàn</div>
@@ -363,7 +368,6 @@ export default function TableManagementPage() {
         </div>
       </div>
 
-      {/* Controls */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <input
           type="text"
@@ -390,14 +394,12 @@ export default function TableManagementPage() {
         </button>
       </div>
 
-      {/* Tables Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredTables.map((table) => (
           <div
             key={table.table_id || table.number}
             className="bg-[#161b22] border border-[#30363d] p-6 rounded-lg hover:border-[#58a6ff] transition"
           >
-            {/* Table Header */}
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-xl font-bold text-white mb-1">
@@ -414,32 +416,30 @@ export default function TableManagementPage() {
               </span>
             </div>
 
-            {/* Quick Status Change */}
             <div className="flex gap-2 mb-3">
               <button
                 onClick={() => updateTableStatus(table.number, 'AVAILABLE')}
-                className="flex-1 px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded"
+                className="flex-1 px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded disabled:opacity-50"
                 disabled={table.status === 'AVAILABLE'}
               >
                 Trống
               </button>
               <button
                 onClick={() => updateTableStatus(table.number, 'OCCUPIED')}
-                className="flex-1 px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded"
+                className="flex-1 px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded disabled:opacity-50"
                 disabled={table.status === 'OCCUPIED'}
               >
                 Có khách
               </button>
               <button
                 onClick={() => updateTableStatus(table.number, 'RESERVED')}
-                className="flex-1 px-2 py-1 bg-yellow-700 hover:bg-yellow-600 text-white text-xs rounded"
+                className="flex-1 px-2 py-1 bg-yellow-700 hover:bg-yellow-600 text-white text-xs rounded disabled:opacity-50"
                 disabled={table.status === 'RESERVED'}
               >
                 Đặt
               </button>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex gap-2">
               <button
                 onClick={() => openQR(table)}
@@ -464,10 +464,9 @@ export default function TableManagementPage() {
         ))}
       </div>
 
-      {/* Empty State */}
       {filteredTables.length === 0 && (
         <div className="text-center text-[#8b949e] py-16">
-          <div className="text-6xl mb-4">🔍</div>
+          <div className="text-6xl mb-4"></div>
           <div className="text-xl">Không tìm thấy bàn nào</div>
         </div>
       )}
@@ -516,7 +515,7 @@ export default function TableManagementPage() {
                   type="submit"
                   className="flex-1 bg-[#238636] hover:bg-[#2ea043] text-white py-2 rounded-lg font-semibold"
                 >
-                  ✅ Thêm
+                  Thêm
                 </button>
                 <button
                   type="button"
@@ -567,7 +566,7 @@ export default function TableManagementPage() {
                   type="submit"
                   className="flex-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white py-2 rounded-lg font-semibold"
                 >
-                  💾 Lưu
+                   Lưu
                 </button>
                 <button
                   type="button"
@@ -587,24 +586,22 @@ export default function TableManagementPage() {
 
       {/* QR MODAL */}
       {showQRModal && currentQRTable && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-6 max-w-lg w-full">
+       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+         <div className="bg-[#161b22] border border-[#30363d] rounded-xl w-full max-w-md p-5">
+
             <h2 className="text-xl font-bold text-white mb-4">
               QR Code - Bàn {currentQRTable.number}
             </h2>
 
-            {/* QR Code */}
             <div className="bg-white p-6 rounded-lg mb-4">
               <img
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(
                   getOrderUrl(currentQRTable)
                 )}`}
                 alt={`QR Code Bàn ${currentQRTable.number}`}
-                className="w-full h-auto"
+                className="mx-auto w-64 h-64 md:w-72 md:h-72"
               />
             </div>
-
-            {/* Link */}
             <div className="mb-4">
               <label className="block text-[#8b949e] text-sm mb-2">Link gọi món:</label>
               <div className="bg-[#0d1117] border border-[#30363d] rounded-lg p-3 break-all text-[#58a6ff] text-sm">
@@ -612,13 +609,12 @@ export default function TableManagementPage() {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex gap-3">
               <button
                 onClick={downloadQR}
                 className="flex-1 bg-[#238636] hover:bg-[#2ea043] text-white py-2 rounded-lg font-semibold"
               >
-                📥 Tải xuống
+                 Tải xuống
               </button>
               <button
                 onClick={() => {
@@ -627,7 +623,7 @@ export default function TableManagementPage() {
                 }}
                 className="flex-1 bg-[#1f6feb] hover:bg-[#388bfd] text-white py-2 rounded-lg"
               >
-                📋 Copy link
+                 Copy link
               </button>
               <button
                 onClick={() => {

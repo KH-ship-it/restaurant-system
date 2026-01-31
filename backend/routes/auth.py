@@ -1,153 +1,391 @@
-from fastapi import APIRouter, HTTPException, status, Depends
-from models.schemas import UserLogin, LoginResponse, UserResponse
+from fastapi import APIRouter, HTTPException, status, Depends, Header
+from pydantic import BaseModel
 from config.database import get_db_connection
-from utils.auth import verify_password, create_access_token, get_current_user
+import bcrypt
+from datetime import datetime, timedelta
+import jwt
+import os
+from typing import Optional
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 
-# ✅ CẬP NHẬT: Thêm CASHIER role và route
-ROLE_ROUTES = {
-    "OWNER": ["/admin", "/manager", "/kitchen", "/cashier", "/staff"],  # Owner: tất cả
-    "admin": ["/admin"],  # Quản lý (badge tím "Quản lý")
-    "KITCHEN": ["/kitchen"],  # Đầu bếp/Phó bếp (badge nâu "Đầu bếp" / "Phó bếp")
-    "CASHIER": ["/cashier"],  # ✅ Thu ngân - THÊM DÒNG NÀY
-    "staff": ["/staff"],  # Nhân viên
-    "EMPLOYEE": ["/staff"],  # Nhân viên
-}
+# JWT Config
+SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
 
-# ✅ CẬP NHẬT: Thêm display name cho cashier
-ROLE_DISPLAY = {
-    "OWNER": "Chủ nhà hàng",
-    "admin": "Quản lý",
-    "KITCHEN": "Bếp",
-    "CASHIER": "Thu ngân",  # ✅ THÊM DÒNG NÀY
-    "staff": "Nhân viên",
-    "EMPLOYEE": "Nhân viên"
-}
+# ==================== SCHEMAS ====================
 
-# ✅ THÊM: Default route cho mỗi role khi login
-DEFAULT_ROUTES = {
-    "OWNER": "/admin",
-    "admin": "/admin",
-    "KITCHEN": "/kitchen",
-    "CASHIER": "/cashier",  # ✅ Cashier redirect đến /cashier
-    "staff": "/staff",
-    "EMPLOYEE": "/staff"
-}
+class UserLogin(BaseModel):
+    username: str
+    password: str
 
-@router.post("/login", response_model=LoginResponse)
-async def login(credentials: UserLogin):
+# ==================== ROLE NORMALIZATION ====================
+
+def normalize_role_name(role_name: str, role_id: int) -> str:
     """
-    Login endpoint with role-based access control
-    - Kiểm tra username/password
-    - Kiểm tra tài khoản có active không
-    - Trả về JWT token + allowed_routes + default_route theo role
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    🔥 FIX: Chuẩn hóa role_name từ tiếng Việt sang tiếng Anh
     
+    Ví dụ: "Quản lý" -> "ADMIN"
+    
+    Args:
+        role_name: Tên role từ database (có thể là tiếng Việt)
+        role_id: ID của role (dùng làm fallback)
+    
+    Returns:
+        Tên role chuẩn hóa bằng tiếng Anh (ADMIN, KITCHEN, STAFF, CASHIER, OWNER)
+    """
+    
+    # Mapping từ tiếng Việt sang tiếng Anh
+    ROLE_MAPPING = {
+        "Quản lý": "ADMIN",
+        "Đầu bếp": "KITCHEN", 
+        "Phục vụ": "STAFF",
+        "Thu ngân": "CASHIER",
+        "Chủ cửa hàng": "OWNER",
+        # Thêm các biến thể có thể có
+        "quan ly": "ADMIN",
+        "dau bep": "KITCHEN",
+        "phuc vu": "STAFF",
+        "thu ngan": "CASHIER"
+    }
+    
+    # Nếu role_name đã là tiếng Anh, giữ nguyên
+    english_roles = ["ADMIN", "KITCHEN", "STAFF", "CASHIER", "OWNER"]
+    if role_name and role_name.upper() in english_roles:
+        return role_name.upper()
+    
+    # Nếu có mapping, dùng mapping
+    if role_name and role_name in ROLE_MAPPING:
+        return ROLE_MAPPING[role_name]
+    
+    # Fallback theo role_id
+    ROLE_ID_MAPPING = {
+        1: "ADMIN",      # Quản lý / Owner
+        2: "ADMIN",      # Admin
+        3: "KITCHEN",    # Đầu bếp
+        4: "CASHIER",    # Thu ngân
+        5: "STAFF"       # Phục vụ
+    }
+    
+    return ROLE_ID_MAPPING.get(role_id, "STAFF")
+
+# ==================== PASSWORD FUNCTIONS ====================
+
+def hash_password(password: str) -> str:
+    """Hash password using bcrypt"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify password using bcrypt"""
     try:
-        # Lấy thông tin user từ database
-        cursor.execute(
-            """
-            SELECT u.user_id, u.username, u.password_hash, u.role, u.is_active,
-                   e.full_name, e.phone, e.position
-            FROM users u
-            LEFT JOIN employees e ON u.user_id = e.user_id
-            WHERE u.username = %s
-            """,
-            (credentials.username,)
+        plain_password = plain_password.strip()
+        hashed_password = hashed_password.strip()
+        
+        print(f"🔐 Verifying password:")
+        print(f"   Plain password length: {len(plain_password)}")
+        print(f"   Hash starts with: {hashed_password[:10]}")
+        
+        result = bcrypt.checkpw(
+            plain_password.encode('utf-8'),
+            hashed_password.encode('utf-8')
         )
         
+        print(f"   Verification result: {result}")
+        return result
+        
+    except Exception as e:
+        print(f"❌ Verification error: {type(e).__name__}: {e}")
+        return False
+
+# ==================== JWT FUNCTIONS ====================
+
+def create_access_token(user_id: int, username: str, role: str):
+    """Create JWT token"""
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    payload = {
+        "user_id": user_id,
+        "username": username,
+        "role": role,
+        "exp": expire,
+        "iat": datetime.utcnow()
+    }
+    
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    print(f"🎫 Token created: {token[:30]}...")
+    
+    return token
+
+def verify_token(token: str):
+    """Verify JWT token"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token đã hết hạn")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token không hợp lệ")
+
+# ==================== UTILITY ENDPOINTS ====================
+
+@router.post("/hash-password")
+def create_password_hash(password: str):
+    """Utility endpoint to create password hash"""
+    hashed = hash_password(password)
+    return {
+        "password": password,
+        "hash": hashed,
+        "verify": verify_password(password, hashed)
+    }
+
+# ==================== LOGIN ENDPOINT ====================
+
+@router.post("/login")
+async def login(credentials: UserLogin):
+    """
+    🔥 FIXED: Login endpoint with role normalization
+    
+    Trả về role_name đã được chuẩn hóa (ADMIN, KITCHEN, STAFF, CASHIER, OWNER)
+    thay vì tên tiếng Việt từ database
+    """
+    
+    conn = None
+    cursor = None
+    
+    try:
+        print("\n" + "="*70)
+        print(f"🔐 LOGIN ATTEMPT")
+        print("="*70)
+        print(f"📧 Username: {credentials.username}")
+        print(f"🔑 Password: {'*' * len(credentials.password)} (length: {len(credentials.password)})")
+        
+        # Connect to database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        print(f"✅ Database connected")
+        
+        # 🔥 CRITICAL: JOIN with roles table to get role_name
+        query = """
+            SELECT 
+                u.user_id, 
+                u.username, 
+                u.password, 
+                u.role_id,
+                u.is_active,
+                r.role_name,
+                e.full_name,
+                e.employee_id,
+                e.position
+            FROM users u
+            LEFT JOIN roles r ON u.role_id = r.role_id
+            LEFT JOIN employees e ON u.user_id = e.user_id
+            WHERE u.username = %s
+        """
+        
+        print(f"\n🔍 Executing query for username: {credentials.username}")
+        cursor.execute(query, (credentials.username,))
         user = cursor.fetchone()
         
         if not user:
+            print(f"❌ User '{credentials.username}' NOT FOUND in database")
+            print("="*70 + "\n")
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
+                status_code=401,
                 detail="Tên đăng nhập hoặc mật khẩu không đúng"
             )
         
-        # Kiểm tra tài khoản có bị khóa không
-        if not user['is_active']:
+        print(f"\n✅ User found in database:")
+        print(f"   User ID: {user['user_id']}")
+        print(f"   Username: {user['username']}")
+        print(f"   Full Name: {user.get('full_name', 'N/A')}")
+        print(f"   Position: {user.get('position', 'N/A')}")
+        print(f"   Role ID: {user['role_id']}")
+        print(f"   Role Name (from DB): {user.get('role_name', 'N/A')}")
+        
+        # Check if user is active
+        if not user.get('is_active', True):
+            print(f"❌ User is inactive")
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tài khoản đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên."
+                status_code=403,
+                detail="Tài khoản đã bị vô hiệu hóa"
             )
         
-        # Xác thực mật khẩu
-        if not verify_password(credentials.password, user['password_hash']):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Tên đăng nhập hoặc mật khẩu không đúng"
-            )
+        # Get password hash
+        password_hash = user['password']
         
-        # Lấy role của user
-        user_role = user['role']
+        print(f"\n🔐 Password Hash Info:")
+        print(f"   Hash type: {'BCRYPT' if password_hash.startswith('$2') else 'UNKNOWN'}")
+        print(f"   Hash length: {len(password_hash)}")
+        print(f"   Hash preview: {password_hash[:30]}...")
         
-        # Validate role có tồn tại trong hệ thống không
-        if user_role not in ROLE_ROUTES:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Vai trò '{user_role}' không hợp lệ trong hệ thống"
-            )
+        # Verify password
+        print(f"\n🔓 Verifying password...")
         
-        # Tạo JWT token
+        is_valid = False
+        
+        if password_hash.startswith('$2b$') or password_hash.startswith('$2a$'):
+            # BCrypt hash
+            is_valid = verify_password(credentials.password, password_hash)
+            
+            if not is_valid:
+                print(f"❌ Password verification FAILED")
+                print("="*70 + "\n")
+                raise HTTPException(
+                    status_code=401,
+                    detail="Tên đăng nhập hoặc mật khẩu không đúng"
+                )
+            
+            print(f"✅ Password verification SUCCESS")
+            
+        else:
+            # Plain text (for debugging only - NOT RECOMMENDED)
+            print(f"⚠️ WARNING: Plain text password detected")
+            is_valid = (credentials.password == password_hash)
+            
+            if not is_valid:
+                print(f"❌ Plain text password mismatch")
+                print("="*70 + "\n")
+                raise HTTPException(
+                    status_code=401,
+                    detail="Tên đăng nhập hoặc mật khẩu không đúng"
+                )
+            
+            print(f"✅ Plain text password matched")
+        
+        # 🔥 FIX: Normalize role_name (Quản lý -> ADMIN)
+        raw_role_name = user.get('role_name')
+        user_role = normalize_role_name(raw_role_name, user['role_id'])
+        
+        print(f"\n👤 User Role Information:")
+        print(f"   Role ID: {user['role_id']}")
+        print(f"   Raw Role Name from DB: {raw_role_name}")
+        print(f"   🔥 Normalized Role: {user_role}")  # 👈 THIS IS WHAT WE RETURN
+        
+        # Create JWT token with normalized role
         token = create_access_token(
             user_id=user['user_id'],
             username=user['username'],
-            role=user_role
+            role=user_role  # 👈 Now "ADMIN" not "Quản lý"
         )
         
-        # Lấy danh sách routes được phép truy cập
-        allowed_routes = ROLE_ROUTES.get(user_role, [])
+        print(f"\n🎫 Token Info:")
+        print(f"   Algorithm: {ALGORITHM}")
+        print(f"   Expires in: {ACCESS_TOKEN_EXPIRE_MINUTES} minutes")
+        print(f"   Token preview: {token[:40]}...")
         
-        # ✅ Lấy default route để redirect sau khi login
-        default_route = DEFAULT_ROUTES.get(user_role, "/")
+        # Prepare response
+        response = {
+            "success": True,
+            "message": "Đăng nhập thành công",
+            "token": token,
+            "access_token": token,  # Alias for compatibility
+            "token_type": "bearer",
+            "user": {
+                "userId": user['user_id'],
+                "username": user['username'],
+                "fullName": user.get('full_name', user['username']),
+                "role": user_role,  # 🔥 FIX: Now returns "ADMIN" not "Quản lý"
+                "roleId": user['role_id'],
+                "employeeId": user.get('employee_id'),
+                "position": user.get('position'),
+                "email": f"{user['username']}@restaurant.com"
+            },
+            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60  # seconds
+        }
         
-        # Chuẩn bị response
-        user_response = UserResponse(
-            id=user['user_id'],
-            username=user['username'],
-            role=user_role,
-            fullName=user.get('full_name', user['username']),
-            email=f"{user['username']}@restaurant.com"
-        )
+        print(f"\n✅ LOGIN SUCCESSFUL")
+        print(f"📤 Returning user.role: '{user_role}' (normalized)")
+        print(f"   Response keys: {list(response.keys())}")
+        print("="*70 + "\n")
         
-        return LoginResponse(
-            success=True,
-            token=token,
-            user=user_response,
-            allowed_routes=allowed_routes,
-            default_route=default_route  # ✅ Thêm default_route vào response
-        )
-    
-    except HTTPException:
-        raise
+        return response
+        
+    except HTTPException as he:
+        # Re-raise HTTP exceptions
+        raise he
+        
     except Exception as e:
+        print(f"\n❌ UNEXPECTED ERROR:")
+        print(f"   Type: {type(e).__name__}")
+        print(f"   Message: {str(e)}")
+        print("="*70 + "\n")
+        
+        import traceback
+        traceback.print_exc()
+        
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Đăng nhập thất bại: {str(e)}"
+            status_code=500,
+            detail=f"Lỗi server: {str(e)}"
         )
+        
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
+# ==================== GET CURRENT USER ====================
 
-@router.get("/me")
-async def get_me(current_user: dict = Depends(get_current_user)):
-    """
-    Lấy thông tin user hiện tại
-    Yêu cầu JWT token hợp lệ
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    """Get current user from token"""
+    
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="Không tìm thấy token xác thực"
+        )
     
     try:
+        # Extract token from "Bearer <token>"
+        scheme, token = authorization.split()
+        
+        if scheme.lower() != 'bearer':
+            raise HTTPException(
+                status_code=401,
+                detail="Sai định dạng token"
+            )
+        
+        # Verify token
+        payload = verify_token(token)
+        
+        return payload
+        
+    except ValueError:
+        raise HTTPException(
+            status_code=401,
+            detail="Sai định dạng token"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Token không hợp lệ: {str(e)}"
+        )
+
+# ==================== OTHER ENDPOINTS ====================
+
+@router.get("/me")
+async def get_me(current_user = Depends(get_current_user)):
+    """Get current user info"""
+    
+    conn = None
+    cursor = None
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
         cursor.execute(
             """
-            SELECT u.user_id, u.username, u.role, u.is_active,
-                   e.full_name, e.phone, e.position
+            SELECT 
+                u.user_id, 
+                u.username, 
+                u.role_id, 
+                r.role_name,
+                e.full_name,
+                e.position
             FROM users u
+            LEFT JOIN roles r ON u.role_id = r.role_id
             LEFT JOIN employees e ON u.user_id = e.user_id
             WHERE u.user_id = %s
             """,
@@ -157,76 +395,130 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         user = cursor.fetchone()
         
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Không tìm thấy người dùng"
-            )
+            raise HTTPException(status_code=404, detail="Không tìm thấy user")
         
-        # Lấy allowed routes
-        allowed_routes = ROLE_ROUTES.get(user['role'], [])      
+        # 🔥 FIX: Normalize role
+        raw_role_name = user.get('role_name')
+        normalized_role = normalize_role_name(raw_role_name, user['role_id'])
+        
         return {
             "success": True,
-            "data": {
-                "user_id": user['user_id'],
+            "user": {
+                "userId": user['user_id'],
                 "username": user['username'],
-                "role": user['role'],
-                "role_display": ROLE_DISPLAY.get(user['role'], user['role']),
-                "full_name": user.get('full_name'),
-                "phone": user.get('phone'),
-                "position": user.get('position'),
-                "is_active": user['is_active'],
-                "allowed_routes": allowed_routes,
-                "default_route": DEFAULT_ROUTES.get(user['role'], "/")  # ✅ Thêm default_route
+                "fullName": user.get('full_name', user['username']),
+                "role": normalized_role,  # 🔥 Normalized
+                "roleId": user['role_id'],
+                "position": user.get('position')
             }
-        } 
+        }
+        
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 @router.post("/logout")
-async def logout(current_user: dict = Depends(get_current_user)):
-    """
-    Đăng xuất
-    JWT không cần xử lý server-side, client tự xóa token
-    """
+def logout():
+    """Logout - Client deletes token"""
     return {
         "success": True,
         "message": "Đăng xuất thành công"
     }
-# ==================== Helper Functions ====================,
 
-def check_route_permission(user_role: str, requested_route: str) -> bool:
-    """
-    Kiểm tra user có quyền truy cập route không
+# ==================== DEBUG ENDPOINTS ====================
+
+@router.get("/check-user/{username}")
+def check_user(username: str):
+    """Debug endpoint to check user in database"""
     
-    Args:
-        user_role: Role của user (OWNER, admin, KITCHEN, CASHIER, staff)
-        requested_route: Route muốn truy cập (vd: /admin/dashboard)
+    conn = None
+    cursor = None
     
-    Returns:
-        bool: True nếu có quyền, False nếu không
-    """
-    allowed_routes = ROLE_ROUTES.get(user_role, [])
-    
-    for allowed_route in allowed_routes:
-        if requested_route.startswith(allowed_route):
-            return True
-    return False
-def require_role_permission(requested_route: str):
-    """
-    Dependency để kiểm tra quyền truy cập route
-    
-    Cách dùng:
-    @router.get("/admin/dashboard", dependencies=[Depends(require_role_permission("/admin"))])
-    """
-    async def check_permission(current_user: dict = Depends(get_current_user)):
-        user_role = current_user.get('role')
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        if not check_route_permission(user_role, requested_route):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Bạn không có quyền truy cập vào {requested_route}. Vai trò của bạn là '{ROLE_DISPLAY.get(user_role, user_role)}'"
+        cursor.execute(
+            """
+            SELECT 
+                u.user_id, 
+                u.username, 
+                u.password, 
+                u.role_id,
+                u.is_active,
+                r.role_name,
+                e.full_name,
+                e.position
+            FROM users u
+            LEFT JOIN roles r ON u.role_id = r.role_id
+            LEFT JOIN employees e ON u.user_id = e.user_id
+            WHERE u.username = %s
+            """,
+            (username,)
+        )
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            return {"found": False, "username": username}
+        
+        # Normalize role for debug output
+        raw_role_name = user.get('role_name')
+        normalized_role = normalize_role_name(raw_role_name, user['role_id'])
+        
+        return {
+            "found": True,
+            "user_id": user['user_id'],
+            "username": user['username'],
+            "role_id": user['role_id'],
+            "role_name_raw": raw_role_name,
+            "role_name_normalized": normalized_role,  # 🔥 Show both versions
+            "full_name": user.get('full_name'),
+            "position": user.get('position'),
+            "is_active": user.get('is_active'),
+            "password_type": "bcrypt" if user['password'].startswith('$2') else "plain",
+            "password_preview": user['password'][:30] + "..."
+        }
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@router.get("/check-roles")
+def check_roles():
+    """Debug endpoint to check roles table"""
+    
+    conn = None
+    cursor = None
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM roles ORDER BY role_id")
+        roles = cursor.fetchall()
+        
+        # Add normalized version
+        roles_with_normalized = []
+        for role in roles:
+            role_dict = dict(role)
+            role_dict['normalized_name'] = normalize_role_name(
+                role_dict.get('role_name'), 
+                role_dict['role_id']
             )
+            roles_with_normalized.append(role_dict)
         
-        return current_user
-    
-    return check_permission
+        return {
+            "success": True,
+            "roles": roles_with_normalized
+        }
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

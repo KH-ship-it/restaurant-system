@@ -1,400 +1,557 @@
-# ========================================
-# FILE: backend/routes/employees.py
-# FIXED VERSION - Handles both with/without trailing slash
-# ========================================
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import Optional
-from pydantic import BaseModel
-from datetime import datetime
+# routes/employees.py - UPDATED WITH POSITION-ROLE MAPPING
+from fastapi import APIRouter, Depends, HTTPException
+from middleware.auth import verify_token
+from utils.auth import get_password_hash
 from config.database import get_db_connection
-from utils.auth import get_current_user
+from pydantic import BaseModel
+from typing import Optional
 
 router = APIRouter(prefix="/api/employees", tags=["employees"])
 
-# ========================================
-# SCHEMAS
-# ========================================
+# ============================================================================
+# POSITION TO ROLE MAPPING - CRITICAL CHANGE
+# ============================================================================
+
+POSITION_TO_ROLE = {
+    "Quản lý": "OWNER",      # Quản lý → ADMIN → /thongke
+    "Đầu bếp": "KITCHEN",    # Đầu bếp → KITCHEN → /order
+    "Phục vụ": "STAFF",      # Phục vụ → STAFF → /order
+    "Thu ngân": "CASHIER",   # Thu ngân → CASHIER → /thungan
+}
+
+def get_role_id_from_position(cursor, position: str) -> int:
+    """Get role_id based on position"""
+    
+    # Map position to role_name
+    role_name = POSITION_TO_ROLE.get(position, "STAFF")  # Default to STAFF
+    
+    print(f"   Position: '{position}' → Role: '{role_name}'")
+    
+    # Get role_id from database
+    cursor.execute(
+        "SELECT role_id FROM roles WHERE role_name = %s LIMIT 1",
+        (role_name,)
+    )
+    role_result = cursor.fetchone()
+    
+    if not role_result:
+        # Fallback to STAFF role
+        cursor.execute(
+            "SELECT role_id FROM roles WHERE role_name = 'STAFF' LIMIT 1"
+        )
+        role_result = cursor.fetchone()
+        
+        if not role_result:
+            raise Exception(f"Cannot find role_id for position '{position}'")
+    
+    role_id = role_result['role_id']
+    print(f"   → role_id: {role_id}")
+    
+    return role_id
+
+# ============================================================================
+# PYDANTIC MODELS
+# ============================================================================
 
 class EmployeeCreate(BaseModel):
-    name: str
-    phone: str
-    email: Optional[str] = None
-    role: str = "staff"
-    salary: Optional[float] = None
+    username: str
+    password: str
+    full_name: str
+    phone: Optional[str] = None
+    position: str = "Phục vụ"
+    
+    class Config:
+        extra = "ignore"
 
 class EmployeeUpdate(BaseModel):
-    name: Optional[str] = None
+    full_name: Optional[str] = None
     phone: Optional[str] = None
-    email: Optional[str] = None
-    role: Optional[str] = None
-    salary: Optional[float] = None
-    status: Optional[str] = None
+    position: Optional[str] = None  # Changing position will change role
+    
+    class Config:
+        extra = "ignore"
 
-# ========================================
-# GET ALL EMPLOYEES - FIXED WITH BOTH DECORATORS
-# ========================================
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
 
-@router.get("")  # Handles /api/employees
-@router.get("/")  # Handles /api/employees/
-async def get_employees(current_user: dict = Depends(get_current_user)):
-    """
-    Get all employees
-    Requires authentication
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+def validate_employee_data(employee: EmployeeCreate) -> dict:
+    """Validate and clean employee data"""
+    errors = []
+    
+    # Validate username
+    username = employee.username.strip() if employee.username else ""
+    if len(username) < 3:
+        errors.append("Tên đăng nhập phải có ít nhất 3 ký tự")
+    
+    # Validate password
+    if len(employee.password) < 6:
+        errors.append("Mật khẩu phải có ít nhất 6 ký tự")
+    
+    # Validate full_name
+    full_name = employee.full_name.strip() if employee.full_name else ""
+    if len(full_name) < 2:
+        errors.append("Họ tên phải có ít nhất 2 ký tự")
+    
+    # Validate position
+    if employee.position not in POSITION_TO_ROLE:
+        errors.append(f"Vị trí không hợp lệ. Chọn: {', '.join(POSITION_TO_ROLE.keys())}")
+    
+    # Clean phone
+    phone = employee.phone.strip() if employee.phone else None
+    if phone and len(phone) == 0:
+        phone = None
+    
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Dữ liệu không hợp lệ", "errors": errors}
+        )
+    
+    return {
+        "username": username,
+        "password": employee.password,
+        "full_name": full_name,
+        "phone": phone,
+        "position": employee.position
+    }
+
+# ============================================================================
+# ROUTES
+# ============================================================================
+
+@router.get("")
+def get_employees(current_user: dict = Depends(verify_token)):
+    """Get all employees - OWNER/ADMIN only"""
+    
+    conn = None
+    cursor = None
     
     try:
+        print(f"\n{'='*70}")
+        print(f"📋 [GET EMPLOYEES]")
+        print(f"{'='*70}")
+        
+        # Allow OWNER and ADMIN to view
+        if current_user.get("role") not in ["OWNER", "ADMIN"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Chỉ OWNER/ADMIN mới có quyền xem danh sách nhân viên"
+            )
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
         cursor.execute("""
             SELECT 
-                employee_id,
-                name,
-                phone,
-                email,
-                role,
-                salary,
-                status,
-                hire_date,
-                created_at,
-                updated_at
-            FROM employees
-            ORDER BY created_at DESC
+                e.employee_id,
+                e.user_id,
+                u.username,
+                e.full_name,
+                e.phone,
+                e.position,
+                e.hire_date,
+                u.role_id,
+                r.role_name,
+                u.is_active
+            FROM employees e
+            JOIN users u ON e.user_id = u.user_id
+            LEFT JOIN roles r ON u.role_id = r.role_id
+            ORDER BY e.employee_id
         """)
         
-        employees = cursor.fetchall()
+        rows = cursor.fetchall()
+        employees = []
         
+        for row in rows:
+            employees.append({
+                'employee_id': row['employee_id'],
+                'user_id': row['user_id'],
+                'username': row['username'],
+                'full_name': row['full_name'],
+                'phone': row['phone'],
+                'position': row['position'],
+                'hire_date': row['hire_date'].isoformat() if row['hire_date'] else None,
+                'role': row['role_name'] or 'STAFF',
+                'is_active': row['is_active']
+            })
+
         print(f"✅ Loaded {len(employees)} employees")
-        
+        print(f"{'='*70}\n")
+
         return {
             "success": True,
             "data": employees
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"❌ Error getting employees: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting employees: {str(e)}"
-        )
+        print(f"❌ ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
-# ========================================
-# CREATE EMPLOYEE - FIXED WITH BOTH DECORATORS
-# ========================================
-
-@router.post("")  # Handles /api/employees
-@router.post("/")  # Handles /api/employees/
-async def create_employee(
+@router.post("")
+def create_employee(
     employee: EmployeeCreate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(verify_token)
 ):
-    """
-    Create new employee
-    Requires authentication
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    """Create new employee - OWNER/ADMIN only, auto-assign role based on position"""
+    
+    print(f"\n{'='*70}")
+    print(f" [CREATE EMPLOYEE] REQUEST RECEIVED")
+    print(f"{'='*70}")
+    print(f"Current user: {current_user.get('username')} (role: {current_user.get('role')})")
+    print(f"\n RAW DATA:")
+    print(f"  username: '{employee.username}'")
+    print(f"  full_name: '{employee.full_name}'")
+    print(f"  phone: '{employee.phone}'")
+    print(f"  position: '{employee.position}'")
+    print(f"{'='*70}\n")
+    
+    # Check permission
+    if current_user.get("role") not in ["OWNER", "ADMIN"]:
+        print(f" Permission denied")
+        raise HTTPException(
+            status_code=403, 
+            detail="Chỉ OWNER/ADMIN mới có quyền tạo nhân viên"
+        )
+    
+    conn = None
+    cursor = None
     
     try:
-        # Check if phone already exists
+        # Validate data
+        print(f" Validating data...")
+        validated_data = validate_employee_data(employee)
+        print(f"Data validated")
+        
+        # Connect to database
+        print(f"\n Connecting to database...")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        print(f" Database connected")
+        
+        # Check username exists
+        print(f"\nChecking if username exists...")
         cursor.execute(
-            "SELECT employee_id FROM employees WHERE phone = %s",
-            (employee.phone,)
+            "SELECT user_id, username FROM users WHERE username = %s", 
+            (validated_data['username'],)
         )
+        existing = cursor.fetchone()
         
-        if cursor.fetchone():
+        if existing:
+            print(f" Username already exists: {existing['username']}")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Số điện thoại {employee.phone} đã tồn tại"
+                status_code=400, 
+                detail=f"Tên đăng nhập '{validated_data['username']}' đã tồn tại"
             )
         
-        # Check if email already exists (if provided)
-        if employee.email:
-            cursor.execute(
-                "SELECT employee_id FROM employees WHERE email = %s",
-                (employee.email,)
-            )
-            
-            if cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Email {employee.email} đã tồn tại"
-                )
+        print(f" Username available")
         
-        # Insert new employee
+        # Hash password
+        print(f"\n Hashing password...")
+        hashed_password = get_password_hash(validated_data['password'])
+        print(f" Password hashed")
+        
+        #  GET ROLE_ID FROM POSITION (KEY CHANGE)
+        print(f"\n Mapping position to role...")
+        role_id = get_role_id_from_position(cursor, validated_data['position'])
+        print(f"Position '{validated_data['position']}' → role_id: {role_id}")
+        
+        # Create user account
+        print(f"\n👤 Creating user account...")
         cursor.execute("""
-            INSERT INTO employees (name, phone, email, role, salary, status, hire_date)
-            VALUES (%s, %s, %s, %s, %s, 'active', NOW())
-            RETURNING employee_id, name, phone, email, role, salary, status, hire_date, created_at
+            INSERT INTO users (username, password, role_id, is_active)
+            VALUES (%s, %s, %s, true)
+            RETURNING user_id
+        """, (validated_data['username'], hashed_password, role_id))
+        
+        user_result = cursor.fetchone()
+        
+        if not user_result:
+            raise Exception("Failed to create user - no user_id returned")
+        
+        user_id = user_result['user_id']
+        print(f" User created - User ID: {user_id}")
+        
+        # Create employee record
+        print(f"\n Creating employee record...")
+        cursor.execute("""
+            INSERT INTO employees (user_id, full_name, phone, position, hire_date)
+            VALUES (%s, %s, %s, %s, CURRENT_DATE)
+            RETURNING employee_id
         """, (
-            employee.name,
-            employee.phone,
-            employee.email,
-            employee.role,
-            employee.salary
+            user_id, 
+            validated_data['full_name'], 
+            validated_data['phone'], 
+            validated_data['position']
         ))
         
-        new_employee = cursor.fetchone()
+        emp_result = cursor.fetchone()
+        
+        if not emp_result:
+            raise Exception("Failed to create employee - no employee_id returned")
+        
+        employee_id = emp_result['employee_id']
+        print(f"Employee created - Employee ID: {employee_id}")
+        
+        # Commit transaction
+        print(f"\n Committing transaction...")
         conn.commit()
+        print(f" Transaction committed")
         
-        print(f"✅ Created employee {employee.name}")
-        
-        return {
+        result = {
             "success": True,
-            "message": "Thêm nhân viên thành công",
-            "data": new_employee
+            "message": f"Tạo nhân viên '{validated_data['full_name']}' thành công!",
+            "data": {
+                "employee_id": employee_id,
+                "user_id": user_id,
+                "username": validated_data['username'],
+                "full_name": validated_data['full_name'],
+                "phone": validated_data['phone'],
+                "position": validated_data['position'],
+                "role": POSITION_TO_ROLE[validated_data['position']]
+            }
         }
         
-    except HTTPException:
-        raise
+        print(f"\n{'='*70}")
+        print(f" CREATE EMPLOYEE SUCCESS")
+        print(f"   Employee: {validated_data['full_name']}")
+        print(f"   Position: {validated_data['position']}")
+        print(f"   Role: {POSITION_TO_ROLE[validated_data['position']]}")
+        print(f"{'='*70}\n")
+        
+        return result
+        
+    except HTTPException as he:
+        if conn:
+            conn.rollback()
+            print(f" Transaction rolled back (HTTP error)")
+        raise he
+        
     except Exception as e:
-        conn.rollback()
-        print(f"❌ Error creating employee: {str(e)}")
+        if conn:
+            conn.rollback()
+            print(f"Transaction rolled back")
+        
+        print(f"\n{'='*70}")
+        print(f" CREATE EMPLOYEE ERROR")
+        print(f"{'='*70}")
+        print(f"Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print(f"{'='*70}\n")
+        
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500, 
             detail=f"Lỗi tạo nhân viên: {str(e)}"
         )
+        
     finally:
-        cursor.close()
-        conn.close()
-
-# ========================================
-# GET EMPLOYEE BY ID
-# ========================================
-
-@router.get("/{employee_id}")
-async def get_employee(
-    employee_id: int,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get specific employee by ID
-    Requires authentication
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute("""
-            SELECT 
-                employee_id,
-                name,
-                phone,
-                email,
-                role,
-                salary,
-                status,
-                hire_date,
-                created_at,
-                updated_at
-            FROM employees
-            WHERE employee_id = %s
-        """, (employee_id,))
-        
-        employee = cursor.fetchone()
-        
-        if not employee:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Không tìm thấy nhân viên ID {employee_id}"
-            )
-        
-        return {
-            "success": True,
-            "data": employee
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error getting employee: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi lấy thông tin nhân viên: {str(e)}"
-        )
-    finally:
-        cursor.close()
-        conn.close()
-
-# ========================================
-# UPDATE EMPLOYEE
-# ========================================
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @router.put("/{employee_id}")
-async def update_employee(
+def update_employee(
     employee_id: int,
     employee: EmployeeUpdate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(verify_token)
 ):
-    """
-    Update employee info
-    Requires authentication
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    """Update employee - OWNER/ADMIN only, changing position changes role"""
+    
+    print(f"\n{'='*70}")
+    print(f"✏️ [UPDATE EMPLOYEE] ID: {employee_id}")
+    print(f"{'='*70}")
+    
+    if current_user.get("role") not in ["OWNER", "ADMIN"]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Chỉ OWNER/ADMIN mới có quyền cập nhật nhân viên"
+        )
+    
+    conn = None
+    cursor = None
     
     try:
-        # Check if employee exists
-        cursor.execute(
-            "SELECT employee_id FROM employees WHERE employee_id = %s",
-            (employee_id,)
-        )
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        if not cursor.fetchone():
+        # Get employee and user info
+        cursor.execute("""
+            SELECT e.employee_id, e.user_id, e.full_name, e.position, u.role_id
+            FROM employees e
+            JOIN users u ON e.user_id = u.user_id
+            WHERE e.employee_id = %s
+        """, (employee_id,))
+        
+        existing = cursor.fetchone()
+        
+        if not existing:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404, 
                 detail=f"Không tìm thấy nhân viên ID {employee_id}"
             )
         
-        # Build update query dynamically
-        update_fields = []
-        params = []
+        user_id = existing['user_id']
+        old_position = existing['position']
         
-        if employee.name is not None:
-            update_fields.append("name = %s")
-            params.append(employee.name)
+        # Build employee update
+        emp_updates = []
+        emp_params = []
+        
+        if employee.full_name:
+            emp_updates.append("full_name = %s")
+            emp_params.append(employee.full_name.strip())
         
         if employee.phone is not None:
-            # Check if phone already exists for another employee
-            cursor.execute(
-                "SELECT employee_id FROM employees WHERE phone = %s AND employee_id != %s",
-                (employee.phone, employee_id)
-            )
-            if cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Số điện thoại {employee.phone} đã được sử dụng"
-                )
-            update_fields.append("phone = %s")
-            params.append(employee.phone)
+            phone = employee.phone.strip() if employee.phone else None
+            emp_updates.append("phone = %s")
+            emp_params.append(phone)
         
-        if employee.email is not None:
-            # Check if email already exists for another employee
-            cursor.execute(
-                "SELECT employee_id FROM employees WHERE email = %s AND employee_id != %s",
-                (employee.email, employee_id)
-            )
-            if cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Email {employee.email} đã được sử dụng"
-                )
-            update_fields.append("email = %s")
-            params.append(employee.email)
+        if employee.position:
+            emp_updates.append("position = %s")
+            emp_params.append(employee.position)
         
-        if employee.role is not None:
-            update_fields.append("role = %s")
-            params.append(employee.role)
-        
-        if employee.salary is not None:
-            update_fields.append("salary = %s")
-            params.append(employee.salary)
-        
-        if employee.status is not None:
-            update_fields.append("status = %s")
-            params.append(employee.status)
-        
-        if not update_fields:
+        if not emp_updates:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Không có thông tin để cập nhật"
+                status_code=400, 
+                detail="Không có dữ liệu để cập nhật"
             )
         
-        # Add employee_id to params
-        params.append(employee_id)
-        
-        # Execute update
-        query = f"""
+        # Update employee table
+        emp_params.append(employee_id)
+        cursor.execute(f"""
             UPDATE employees 
-            SET {', '.join(update_fields)}, updated_at = NOW()
+            SET {', '.join(emp_updates)}
             WHERE employee_id = %s
-            RETURNING employee_id, name, phone, email, role, salary, status, hire_date, updated_at
-        """
+        """, emp_params)
         
-        cursor.execute(query, params)
-        updated_employee = cursor.fetchone()
+        #  IF POSITION CHANGED, UPDATE ROLE IN USERS TABLE
+        if employee.position and employee.position != old_position:
+            print(f"\nPosition changed: '{old_position}' → '{employee.position}'")
+            
+            new_role_id = get_role_id_from_position(cursor, employee.position)
+            
+            cursor.execute("""
+                UPDATE users
+                SET role_id = %s
+                WHERE user_id = %s
+            """, (new_role_id, user_id))
+            
+            print(f"Role updated to match new position")
+        
         conn.commit()
         
-        print(f"✅ Updated employee {employee_id}")
+        print(f" Updated employee ID: {employee_id}")
+        print(f"{'='*70}\n")
         
         return {
             "success": True,
-            "message": "Cập nhật nhân viên thành công",
-            "data": updated_employee
+            "message": f"Cập nhật nhân viên thành công!"
         }
         
     except HTTPException:
+        if conn:
+            conn.rollback()
         raise
     except Exception as e:
-        conn.rollback()
-        print(f"❌ Error updating employee: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi cập nhật nhân viên: {str(e)}"
-        )
+        if conn:
+            conn.rollback()
+        print(f" UPDATE ERROR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        cursor.close()
-        conn.close()
-
-# ========================================
-# DELETE EMPLOYEE
-# ========================================
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @router.delete("/{employee_id}")
-async def delete_employee(
+def delete_employee(
     employee_id: int,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(verify_token)
 ):
-    """
-    Delete employee (soft delete - set status to inactive)
-    Requires authentication
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    """Delete employee - OWNER/ADMIN only"""
+    
+    print(f"\n{'='*70}")
+    print(f"🗑️ [DELETE EMPLOYEE] ID: {employee_id}")
+    print(f"{'='*70}")
+    
+    if current_user.get("role") not in ["OWNER", "ADMIN"]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Chỉ OWNER/ADMIN mới có quyền xóa nhân viên"
+        )
+    
+    conn = None
+    cursor = None
     
     try:
-        # Check if employee exists
-        cursor.execute(
-            "SELECT employee_id, status FROM employees WHERE employee_id = %s",
-            (employee_id,)
-        )
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get employee info
+        cursor.execute("""
+            SELECT e.user_id, e.full_name, u.username 
+            FROM employees e
+            JOIN users u ON e.user_id = u.user_id
+            WHERE e.employee_id = %s
+        """, (employee_id,))
         
         result = cursor.fetchone()
         
         if not result:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404, 
                 detail=f"Không tìm thấy nhân viên ID {employee_id}"
             )
         
-        # Soft delete - set status to inactive instead of actual deletion
-        cursor.execute("""
-            UPDATE employees 
-            SET status = 'inactive', updated_at = NOW()
-            WHERE employee_id = %s
-        """, (employee_id,))
+        user_id = result['user_id']
+        full_name = result['full_name']
+        username = result['username']
+        
+        # Prevent self-deletion
+        if user_id == current_user.get('user_id'):
+            raise HTTPException(
+                status_code=400,
+                detail="Không thể xóa chính mình"
+            )
+        
+        # Delete employee first (foreign key)
+        cursor.execute("DELETE FROM employees WHERE employee_id = %s", (employee_id,))
+        
+        # Delete user
+        cursor.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
         
         conn.commit()
         
-        print(f"✅ Deleted (deactivated) employee {employee_id}")
+        print(f"Deleted: {full_name} ({username})")
+        print(f"{'='*70}\n")
         
         return {
             "success": True,
-            "message": f"Đã xóa nhân viên ID {employee_id}"
+            "message": f"Đã xóa nhân viên '{full_name}' thành công!"
         }
         
     except HTTPException:
+        if conn:
+            conn.rollback()
         raise
     except Exception as e:
-        conn.rollback()
-        print(f"❌ Error deleting employee: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi xóa nhân viên: {str(e)}"
-        )
+        if conn:
+            conn.rollback()
+        print(f" DELETE ERROR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

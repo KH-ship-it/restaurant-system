@@ -36,7 +36,7 @@ def create_public_order(
     conn=Depends(get_db)
 ):
     """
-     PUBLIC ENDPOINT - Khách hàng đặt món qua QR code
+    ✅ PUBLIC ENDPOINT - Khách hàng đặt món qua QR code
     KHÔNG CẦN TOKEN
     
     Request body:
@@ -96,12 +96,23 @@ def create_public_order(
         order_id = result['order_id']
         print(f"   ✓ Order created: #{order_id}")
         
-        # 3. Thêm order items
+        # 3. 🔥 FIX: Thêm order items với ĐÚNG tên cột và subtotal
         for item in order_data.items:
+            subtotal = item.price * item.quantity  # Tính subtotal
+            
             cursor.execute("""
-                INSERT INTO order_items (order_id, item_id, quantity, price)
-                VALUES (%s, %s, %s, %s)
-            """, (order_id, item.item_id, item.quantity, item.price))
+                INSERT INTO order_items (order_id, item_id, quantity, unit_price, subtotal)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                order_id, 
+                item.item_id, 
+                item.quantity, 
+                item.price,      # unit_price
+                subtotal         # subtotal
+            ))
+            
+            print(f"      • Item {item.item_id}: {item.quantity} × {item.price:,.0f}đ = {subtotal:,.0f}đ")
+        
         print(f"   ✓ {len(order_data.items)} items added")
         
         # 4. Cập nhật trạng thái bàn thành OCCUPIED
@@ -122,7 +133,7 @@ def create_public_order(
         conn.commit()
         cursor.close()
         
-        print(f" [PUBLIC ORDER] Bàn {order_data.table_number} đặt món thành công!")
+        print(f"✅ [PUBLIC ORDER] Bàn {order_data.table_number} đặt món thành công!")
         
         return {
             "success": True,
@@ -165,7 +176,7 @@ def get_orders(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """ Lấy danh sách đơn hàng - Nhân viên"""
+    """✅ Lấy danh sách đơn hàng - Nhân viên"""
     cursor = conn.cursor()
     
     query = """
@@ -210,19 +221,17 @@ def get_orders(
     cursor.close()
     
     return {"success": True, "data": orders, "count": len(orders)}
-
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_order(
     order_data: OrderCreate,
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """ Tạo đơn hàng - Nhân viên"""
+    """Tạo đơn hàng - Nhân viên"""
     cursor = conn.cursor()
     
     try:
-        total_amount = sum(item.price * item.quantity for item in order_data.items)
-        
+        total_amount = sum(item.price * item.quantity for item in order_data.items)       
         cursor.execute("""
             INSERT INTO orders (table_id, employee_id, customer_id, total_amount, status)
             VALUES (%s, %s, %s, %s, 'PENDING')
@@ -232,22 +241,28 @@ def create_order(
             current_user.get('employeeId'),
             order_data.customer_id,
             total_amount
-        ))
-        
+        ))      
         result = cursor.fetchone()
-        order_id = result['order_id']
-        
+        order_id = result['order_id']      
+        # 🔥 FIX: Dùng unit_price và subtotal
         for item in order_data.items:
+            subtotal = item.price * item.quantity
+            
             cursor.execute("""
-                INSERT INTO order_items (order_id, item_id, quantity, price)
-                VALUES (%s, %s, %s, %s)
-            """, (order_id, item.item_id, item.quantity, item.price))
+                INSERT INTO order_items (order_id, item_id, quantity, unit_price, subtotal)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                order_id, 
+                item.item_id, 
+                item.quantity, 
+                item.price,
+                subtotal
+            ))
         
         cursor.execute("UPDATE dining_tables SET status = 'OCCUPIED' WHERE table_id = %s", (order_data.table_id,))
         cursor.execute("INSERT INTO kitchen_orders (order_id, status) VALUES (%s, 'WAITING')", (order_id,))
         
-        conn.commit()
-        
+        conn.commit()       
         # Fetch created order
         cursor.execute("""
             SELECT o.*, t.table_number
@@ -256,10 +271,8 @@ def create_order(
             WHERE o.order_id = %s
         """, (order_id,))
         order = cursor.fetchone()
-        cursor.close()
-        
-        return {"success": True, "message": "Order created successfully", "data": order}
-        
+        cursor.close()      
+        return {"success": True, "message": "Order created successfully", "data": order}      
     except Exception as e:
         conn.rollback()
         cursor.close()
@@ -307,7 +320,6 @@ def get_order_detail(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi lấy chi tiết đơn hàng: {str(e)}"
         )
-
 @router.put("/{order_id}/status")
 def update_order_status(
     order_id: int,
@@ -436,10 +448,10 @@ def cancel_order(
             detail=f"Hủy đơn hàng thất bại: {str(e)}"
         )
 
-print(" Order router loaded (PostgreSQL):")
+print("Order router loaded (PostgreSQL):")
 print("    POST /api/orders/public - Khách hàng đặt món (no auth)")
 print("    GET  /api/orders - Nhân viên xem danh sách (auth required)")
 print("    POST /api/orders - Nhân viên tạo order (auth required)")
 print("    GET  /api/orders/{id} - Chi tiết order (auth required)")
-print("   PUT  /api/orders/{id}/status - Cập nhật trạng thái (auth required)")
-print("   PUT  /api/orders/{id}/cancel - Hủy order (auth required)")
+print("    PUT  /api/orders/{id}/status - Cập nhật trạng thái (auth required)")
+print("    PUT  /api/orders/{id}/cancel - Hủy order (auth required)")

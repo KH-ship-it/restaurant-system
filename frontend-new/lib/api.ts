@@ -1,16 +1,12 @@
-// ========================================
-// FILE: lib/api.ts - PHIÊN BẢN HOÀN CHỈNH
-// ========================================
+
+// FILE: lib/api.ts 
 
 import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosError } from 'axios';
-
-// ========================================
 // API CONFIGURATION
-// ========================================
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-console.log('🌐 API URL:', API_URL);
+console.log('API URL:', API_URL);
 
 // ========================================
 // CREATE AXIOS INSTANCE
@@ -26,26 +22,34 @@ const apiClient: AxiosInstance = axios.create({
 });
 
 // ========================================
-// REQUEST INTERCEPTOR - Add token to all requests
+// REQUEST INTERCEPTOR - Add token EXCEPT for login
 // ========================================
 
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    //  CRITICAL: Do NOT add token for login endpoint
+    const isLoginRequest = config.url?.includes('/auth/login');
+    
+    if (isLoginRequest) {
+      console.log(' Login request - NO TOKEN will be added');
+      return config;
+    }
+    
     // Get token from localStorage
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token');
     
     if (token) {
       // Add Authorization header
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('🎟️ Added token to request:', config.url);
+      console.log(' Added token to request:', config.url);
     } else {
-      console.warn('⚠️ No token found for request:', config.url);
+      console.warn(' No token found for request:', config.url);
     }
     
     return config;
   },
   (error) => {
-    console.error('❌ Request interceptor error:', error);
+    console.error(' Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -57,7 +61,7 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => {
     // Success response - just return it
-    console.log('✅ Response received:', response.config.url, response.status);
+    console.log(' Response received:', response.config.url, response.status);
     return response;
   },
   (error: AxiosError) => {
@@ -65,7 +69,7 @@ apiClient.interceptors.response.use(
     const status = error.response?.status;
     const url = error.config?.url;
     
-    console.error('❌ API Error:', {
+    console.error(' API Error:', {
       url,
       status,
       message: error.message,
@@ -75,34 +79,34 @@ apiClient.interceptors.response.use(
     // Handle specific error codes
     if (status === 401) {
       // Unauthorized - Token invalid or expired
-      console.error('🔒 401 Unauthorized - Token invalid or expired');
+      console.error(' 401 Unauthorized');
       
-      // Clear auth data
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      
-      // Don't redirect if we're already on login page or this is a login request
-      const isLoginPage = window.location.pathname.includes('/login');
+      // CRITICAL: Do NOT redirect if this is a login request
       const isLoginRequest = url?.includes('/auth/login');
       
-      if (!isLoginPage && !isLoginRequest) {
+      if (isLoginRequest) {
+        console.log(' Login failed - wrong credentials');
+        // Let the login page handle the error
+        return Promise.reject(error);
+      }
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user');
+      const isLoginPage = window.location.pathname.includes('/login');
+      
+      if (!isLoginPage) {
         console.log('🔄 Redirecting to login page...');
-        
-        // Get current locale
         const locale = window.location.pathname.startsWith('/vi') ? 'vi' : 'en';
-        
-        // Redirect to login
         window.location.href = `/${locale}/login`;
       }
     } else if (status === 403) {
       // Forbidden - No permission
-      console.error('🚫 403 Forbidden - No permission');
+      console.error(' 403 Forbidden - No permission');
     } else if (status === 404) {
       // Not Found
-      console.error('🔍 404 Not Found:', url);
+      console.error(' 404 Not Found:', url);
     } else if (status === 500) {
       // Server Error
-      console.error('💥 500 Internal Server Error');
+      console.error(' 500 Internal Server Error');
     }
     
     return Promise.reject(error);
@@ -118,7 +122,8 @@ export const authAPI = {
    * Login user
    */
   login: (username: string, password: string) => {
-    console.log('🔐 Attempting login for:', username);
+    console.log('Attempting login for:', username);
+    console.log(' API URL:', `${API_URL}/api/auth/login`);
     return apiClient.post('/api/auth/login', { username, password });
   },
   
@@ -131,11 +136,11 @@ export const authAPI = {
   },
   
   /**
-   * Logout user (client-side only, just clears localStorage)
+   * Logout user
    */
   logout: () => {
-    console.log('👋 Logging out');
-    localStorage.removeItem('token');
+    console.log('Logging out');
+    localStorage.removeItem('access_token');
     localStorage.removeItem('user');
     localStorage.removeItem('rememberMe');
     return Promise.resolve({ data: { success: true } });
@@ -147,91 +152,21 @@ export const authAPI = {
 // ========================================
 
 export const employeesAPI = {
-  /**
-   * Get all employees
-   */
-  getAll: () => {
-    console.log('👥 Fetching employees');
-    return apiClient.get('/api/employees');
-  },
-  
-  /**
-   * Get employee by ID
-   */
-  getById: (id: number) => {
-    console.log('👤 Fetching employee:', id);
-    return apiClient.get(`/api/employees/${id}`);
-  },
-  
-  /**
-   * Create new employee
-   */
-  create: (data: any) => {
-    console.log('➕ Creating employee');
-    return apiClient.post('/api/employees', data);
-  },
-  
-  /**
-   * Update employee
-   */
-  update: (id: number, data: any) => {
-    console.log('✏️ Updating employee:', id);
-    return apiClient.put(`/api/employees/${id}`, data);
-  },
-  
-  /**
-   * Delete employee
-   */
-  delete: (id: number) => {
-    console.log('🗑️ Deleting employee:', id);
-    return apiClient.delete(`/api/employees/${id}`);
-  },
+  getAll: () => apiClient.get('/api/employees'),
+  getById: (id: number) => apiClient.get(`/api/employees/${id}`),
+  create: (data: any) => apiClient.post('/api/employees', data),
+  update: (id: number, data: any) => apiClient.put(`/api/employees/${id}`, data),
+  delete: (id: number) => apiClient.delete(`/api/employees/${id}`),
 };
 
 // ========================================
-// TABLES API
-// ========================================
 
 export const tablesAPI = {
-  /**
-   * Get all tables
-   */
-  getAll: () => {
-    console.log('🪑 Fetching tables');
-    return apiClient.get('/api/tables');
-  },
-  
-  /**
-   * Get table by ID
-   */
-  getById: (id: number) => {
-    console.log('🪑 Fetching table:', id);
-    return apiClient.get(`/api/tables/${id}`);
-  },
-  
-  /**
-   * Create new table
-   */
-  create: (data: any) => {
-    console.log('➕ Creating table');
-    return apiClient.post('/api/tables', data);
-  },
-  
-  /**
-   * Update table
-   */
-  update: (id: number, data: any) => {
-    console.log('✏️ Updating table:', id);
-    return apiClient.put(`/api/tables/${id}`, data);
-  },
-  
-  /**
-   * Delete table
-   */
-  delete: (id: number) => {
-    console.log('🗑️ Deleting table:', id);
-    return apiClient.delete(`/api/tables/${id}`);
-  },
+  getAll: () => apiClient.get('/api/tables'),
+  getById: (id: number) => apiClient.get(`/api/tables/${id}`),
+  create: (data: any) => apiClient.post('/api/tables', data),
+  update: (id: number, data: any) => apiClient.put(`/api/tables/${id}`, data),
+  delete: (id: number) => apiClient.delete(`/api/tables/${id}`),
 };
 
 // ========================================
@@ -239,13 +174,7 @@ export const tablesAPI = {
 // ========================================
 
 export const healthAPI = {
-  /**
-   * Check if API is online
-   */
-  check: () => {
-    console.log('🏥 Checking API health');
-    return apiClient.get('/health');
-  },
+  check: () => apiClient.get('/health'),
 };
 
 // ========================================
@@ -254,15 +183,11 @@ export const healthAPI = {
 
 export default apiClient;
 
-// ========================================
-// HELPER FUNCTIONS
-// ========================================
-
 /**
  * Check if user is authenticated
  */
 export function isAuthenticated(): boolean {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('access_token');
   const user = localStorage.getItem('user');
   return !!(token && user);
 }
@@ -286,5 +211,5 @@ export function getCurrentUser(): any | null {
  * Get current token from localStorage
  */
 export function getToken(): string | null {
-  return localStorage.getItem('token');
+  return localStorage.getItem('access_token');
 }

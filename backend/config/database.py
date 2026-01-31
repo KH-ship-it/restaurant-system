@@ -8,7 +8,7 @@ load_dotenv()
 
 DATABASE_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
-    "database": os.getenv("DB_NAME", "qlnhahang"),
+    "database": os.getenv("DB_NAME", "DB"),
     "user": os.getenv("DB_USER", "postgres"),
     "password": os.getenv("DB_PASSWORD", "123456"),
     "port": os.getenv("DB_PORT", "5432")
@@ -24,13 +24,10 @@ def get_db_connection():
         cur.execute("SELECT current_database();")
         print("🔥 Backend connected to DB:", cur.fetchone())
         cur.close()
-
         return conn
     except Exception as e:
-        print(f"❌ Error connecting to database: {e}")
+        print(f"Error connecting to database: {e}")
         raise
-
-
 def get_db():
     """Generator function for database connection (FastAPI dependency)"""
     conn = get_db_connection()
@@ -44,8 +41,8 @@ try:
     cursor = test_conn.cursor()
     cursor.execute("SELECT NOW()")
     result = cursor.fetchone()
-    print(f"✅ Database connected successfully at: {result['now']}")
+    print(f"Database connected successfully at: {result['now']}")
     cursor.close()
     test_conn.close()
 except Exception as e:
-    print(f"❌ Database connection failed: {e}")
+    print(f"Database connection failed: {e}")

@@ -33,8 +33,7 @@ export default function MenuManagement() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-
-  // ⚠️ QUAN TRỌNG: Sử dụng environment variable để frontend hoạt động trên mọi thiết bị
+  //  QUAN TRỌNG: Sử dụng environment variable để frontend hoạt động trên mọi thiết bị
   const getApiUrl = () => {
     // Ưu tiên: Environment variable > Default localhost
     if (typeof window !== 'undefined') {
@@ -42,7 +41,6 @@ export default function MenuManagement() {
     }
     return 'http://localhost:8000';
   };
-  
   const API_URL = `${getApiUrl()}/api/menu`;
   
   const [formData, setFormData] = useState<MenuFormData>({
@@ -56,10 +54,10 @@ export default function MenuManagement() {
 
   const categories = [
     { id: 'all', name: 'Tất cả', icon: '' },
-    { id: 1, name: 'Cà phê', icon: '☕' },
-    { id: 2, name: 'Món chính', icon: '🍖' },
-    { id: 3, name: 'Đồ uống', icon: '🥤' },
-    { id: 4, name: 'Sinh tố', icon: '🍹' }
+    { id: 1, name: 'Cà phê', icon: '' },
+    { id: 2, name: 'Món chính', icon: '' },
+    { id: 3, name: 'Đồ uống', icon: '' },
+    { id: 4, name: 'Sinh tố', icon: '' }
   ];
 
   useEffect(() => {
@@ -69,7 +67,7 @@ export default function MenuManagement() {
   const loadMenuFromAPI = async () => {
     try {
       setIsLoading(true);
-      console.log('🔄 Loading menu from:', API_URL);
+      console.log(' Loading menu from:', API_URL);
       
       const res = await fetch(API_URL, {
         method: 'GET',
@@ -80,14 +78,14 @@ export default function MenuManagement() {
         signal: AbortSignal.timeout(10000) // 10 seconds timeout
       });
 
-      console.log('📡 Response status:', res.status);
+      console.log(' Response status:', res.status);
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
 
       const result = await res.json();
-      console.log('✅ Menu loaded:', result);
+      console.log('Menu loaded:', result);
 
       if (result.success && result.data) {
         setMenuItems(result.data);
@@ -95,7 +93,7 @@ export default function MenuManagement() {
         throw new Error('Invalid response format');
       }
     } catch (error: any) {
-      console.error('❌ Error loading menu:', error);
+      console.error(' Error loading menu:', error);
       
       // Xử lý các loại lỗi khác nhau
       let errorMessage = 'Lỗi tải menu từ server!';
@@ -168,7 +166,7 @@ export default function MenuManagement() {
     setIsModalOpen(true);
   };
 
-  // ✅ HÀM NÉN ẢNH TỰ ĐỘNG
+  //  HÀM NÉN ẢNH TỰ ĐỘNG
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -211,7 +209,7 @@ export default function MenuManagement() {
           // Nén với quality 0.7 (70%)
           const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
           
-          console.log('📊 Image compressed:', {
+          console.log(' Image compressed:', {
             original: `${(file.size / 1024).toFixed(2)} KB`,
             compressed: `${(compressedBase64.length / 1024).toFixed(2)} KB`,
             dimensions: `${width}x${height}`
@@ -235,28 +233,28 @@ export default function MenuManagement() {
 
     // Kiểm tra loại file
     if (!file.type.startsWith('image/')) {
-      alert('❌ Vui lòng chọn file ảnh (JPG, PNG, GIF...)');
+      alert(' Vui lòng chọn file ảnh (JPG, PNG, GIF...)');
       return;
     }
 
     // Kiểm tra kích thước file (max 5MB trước khi nén)
     if (file.size > 5 * 1024 * 1024) {
-      alert('❌ Kích thước ảnh quá lớn! Vui lòng chọn ảnh dưới 5MB');
+      alert(' Kích thước ảnh quá lớn! Vui lòng chọn ảnh dưới 5MB');
       return;
     }
 
     try {
       setIsUploading(true);
-      console.log('📤 Uploading image:', file.name);
+      console.log(' Uploading image:', file.name);
 
       // Nén ảnh tự động
       const compressedBase64 = await compressImage(file);
       
       setFormData({...formData, image_url: compressedBase64});
-      console.log('✅ Image uploaded and compressed successfully');
+      console.log(' Image uploaded and compressed successfully');
       
     } catch (error) {
-      console.error('❌ Error uploading image:', error);
+      console.error(' Error uploading image:', error);
       alert('Lỗi tải ảnh! Vui lòng thử lại');
     } finally {
       setIsUploading(false);
@@ -265,12 +263,12 @@ export default function MenuManagement() {
 
   const handleSubmit = async () => {
     if (!formData.item_name || !formData.category_id || !formData.price || !formData.description) {
-      alert('❌ Vui lòng điền đầy đủ thông tin bắt buộc!');
+      alert(' Vui lòng điền đầy đủ thông tin bắt buộc!');
       return;
     }
 
     if (parseFloat(formData.price) <= 0) {
-      alert('❌ Giá phải lớn hơn 0!');
+      alert(' Giá phải lớn hơn 0!');
       return;
     }
 
@@ -286,7 +284,7 @@ export default function MenuManagement() {
         status: formData.status
       };
 
-      console.log('📤 Sending payload:', { 
+      console.log(' Sending payload:', { 
         ...payload, 
         image_url: payload.image_url.substring(0, 100) + '... (' + payload.image_url.length + ' chars)'
       });
@@ -298,12 +296,12 @@ export default function MenuManagement() {
         method: method,
         headers: {
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true', // ← Fix ngrok warning
+          'ngrok-skip-browser-warning': 'true', 
         },
         body: JSON.stringify(payload)
       });
 
-      console.log('📡 Response status:', res.status);
+      console.log(' Response status:', res.status);
 
       if (!res.ok) {
         const errorText = await res.text();
@@ -311,17 +309,17 @@ export default function MenuManagement() {
       }
 
       const result = await res.json();
-      console.log('✅ Save result:', result);
+      console.log('Save result:', result);
 
       if (result.success) {
-        alert(editingId ? '✅ Cập nhật món thành công!' : '✅ Thêm món mới thành công!');
+        alert(editingId ? ' Cập nhật món thành công!' : ' Thêm món mới thành công!');
         setIsModalOpen(false);
         await loadMenuFromAPI();
       } else {
         throw new Error(result.message || 'Unknown error');
       }
     } catch (error) {
-      console.error('❌ Error saving:', error);
+      console.error('Error saving:', error);
       alert(`Lỗi lưu món: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
@@ -335,7 +333,7 @@ export default function MenuManagement() {
     if (!confirm(`Bạn có chắc chắn muốn ${action} món này?`)) return;
 
     try {
-      console.log(`🔄 Changing status of item ${id} to ${newStatus}`);
+      console.log(` Changing status of item ${id} to ${newStatus}`);
       
       const res = await fetch(`${API_URL}/${id}`, {
         method: 'PUT',
@@ -351,17 +349,17 @@ export default function MenuManagement() {
       const result = await res.json();
 
       if (result.success) {
-        alert(`✅ ${action === 'ẩn' ? 'Đã ẩn món' : 'Đã hiện món'} thành công!`);
+        alert(`${action === 'ẩn' ? 'Đã ẩn món' : 'Đã hiện món'} thành công!`);
         await loadMenuFromAPI();
       }
     } catch (error) {
-      console.error('❌ Error updating status:', error);
+      console.error(' Error updating status:', error);
       alert(`Lỗi cập nhật trạng thái!`);
     }
   };
 
   const deleteMenuPermanently = async (id: number) => {
-    if (!confirm('⚠️ XÓA VĨNH VIỄN? Hành động này không thể hoàn tác!')) return;
+    if (!confirm(' XÓA VĨNH VIỄN? Hành động này không thể hoàn tác!')) return;
 
     try {
       const res = await fetch(`${API_URL}/${id}`, {
@@ -377,11 +375,11 @@ export default function MenuManagement() {
       const result = await res.json();
 
       if (result.success) {
-        alert('✅ Xóa vĩnh viễn thành công!');
+        alert(' Xóa vĩnh viễn thành công!');
         await loadMenuFromAPI();
       }
     } catch (error) {
-      console.error('❌ Error deleting:', error);
+      console.error(' Error deleting:', error);
       alert('Lỗi xóa món!');
     }
   };
@@ -414,7 +412,7 @@ export default function MenuManagement() {
               </div>
               <div className="flex gap-4">
                 <button onClick={loadMenuFromAPI} className="px-5 py-2.5 bg-[#21262d] border border-[#30363d] text-[#c9d1d9] rounded-lg text-sm hover:bg-[#30363d]">
-                  🔄 Làm mới
+                   Làm mới
                 </button>
                 <button onClick={() => openMenuModal()} className="px-5 py-2.5 bg-[#238636] text-white rounded-lg text-sm font-medium hover:bg-[#2ea043]">
                   ➕ Thêm món mới
@@ -445,7 +443,7 @@ export default function MenuManagement() {
 
               <div className="flex gap-4 mb-6 flex-wrap">
                 <div className="flex-1 min-w-[300px] relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-[#8b949e]">🔍</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-[#8b949e]"></span>
                   <input
                     type="text"
                     value={searchQuery}
@@ -543,10 +541,10 @@ export default function MenuManagement() {
                       <label className="block text-sm text-[#8b949e] mb-2 font-medium">Danh mục <span className="text-[#f85149]">*</span></label>
                       <select value={formData.category_id} onChange={(e) => setFormData({...formData, category_id: e.target.value})} className="w-full bg-[#0d1117] border border-[#30363d] text-[#c9d1d9] py-2.5 px-4 rounded-lg text-sm focus:outline-none focus:border-[#58a6ff]">
                         <option value="">Chọn danh mục</option>
-                        <option value="1">☕ Cà phê</option>
-                        <option value="2">🍖 Món chính</option>
-                        <option value="3">🥤 Đồ uống</option>
-                        <option value="4">🍹 Sinh tố</option>
+                        <option value="1"> Cà phê</option>
+                        <option value="2"> Món chính</option>
+                        <option value="3"> Đồ uống</option>
+                        <option value="4"> Sinh tố</option>
                       </select>
                     </div>
                   </div>
@@ -629,7 +627,7 @@ export default function MenuManagement() {
                           </button>
                         </div>
                         <div className="p-3 text-xs text-[#3fb950] text-center bg-[#161b22]/95 backdrop-blur-sm border-t border-[#30363d] flex items-center justify-center gap-2">
-                          <span>✅</span>
+                          <span></span>
                           <span className="font-medium">Ảnh đã được tải lên và tối ưu thành công</span>
                         </div>
                       </div>
@@ -638,14 +636,9 @@ export default function MenuManagement() {
                     {/* Info message */}
                     <div className="mt-3 p-3 bg-[#161b22] border border-[#30363d] rounded-lg">
                       <div className="text-xs text-[#8b949e] flex items-start gap-2">
-                        <span className="text-base">💡</span>
+                        <span className="text-base"></span>
                         <div>
-                          <div className="font-medium text-[#c9d1d9] mb-1">Tối ưu hóa tự động:</div>
-                          <ul className="list-disc list-inside space-y-1 text-[#6e7681]">
-                            <li>Ảnh sẽ tự động resize về tối đa 800x800px</li>
-                            <li>Nén với chất lượng 70% để giảm dung lượng</li>
-                            <li>Lưu dạng Base64 vào database</li>
-                          </ul>
+                          <div className="font-medium text-[#c9d1d9] mb-1"></div>
                         </div>
                       </div>
                     </div>
