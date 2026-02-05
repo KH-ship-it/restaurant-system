@@ -219,7 +219,6 @@ export default function TableManagementPage() {
       });
 
       const result = await res.json();
-
       if (result.success) {
         alert(' Xóa bàn thành công!');
         await loadTablesFromAPI(token);
@@ -231,7 +230,6 @@ export default function TableManagementPage() {
       alert('Lỗi xóa bàn!');
     }
   };
-
   // ========================================
   // QUICK STATUS UPDATE
   // ========================================
@@ -348,7 +346,6 @@ export default function TableManagementPage() {
         <h1 className="text-3xl font-bold text-white mb-2">Quản Lý Bàn</h1>
         <p className="text-[#8b949e]">Tổng cộng {stats.total} bàn</p>
       </div>
-
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-[#161b22] border border-[#30363d] p-4 rounded-lg">
           <div className="text-[#8b949e] text-sm mb-1">Tổng số bàn</div>
@@ -592,7 +589,6 @@ export default function TableManagementPage() {
             <h2 className="text-xl font-bold text-white mb-4">
               QR Code - Bàn {currentQRTable.number}
             </h2>
-
             <div className="bg-white p-6 rounded-lg mb-4">
               <img
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(
@@ -608,7 +604,6 @@ export default function TableManagementPage() {
                 {getOrderUrl(currentQRTable)}
               </div>
             </div>
-
             <div className="flex gap-3">
               <button
                 onClick={downloadQR}

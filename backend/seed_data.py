@@ -20,7 +20,7 @@ cursor = conn.cursor()
 print("🌱 Starting database seeding...")
 
 # 1. Insert roles
-print("📝 Inserting roles...")
+print(" Inserting roles...")
 cursor.execute("""
     INSERT INTO roles (role_name) 
     VALUES ('OWNER'), ('EMPLOYEE') 
@@ -28,13 +28,13 @@ cursor.execute("""
 """)
 
 # 2. Hash passwords
-print("🔐 Hashing passwords...")
+print(" Hashing passwords...")
 admin_password = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 manager_password = bcrypt.hashpw('manager123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 staff_password = bcrypt.hashpw('staff123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 # 3. Insert users
-print("👤 Inserting users...")
+print(" Inserting users...")
 try:
     cursor.execute("""
         INSERT INTO users (username, password, role_id) 
@@ -48,7 +48,7 @@ except Exception as e:
     print(f"Users might already exist: {e}")
 
 # 4. Insert employees
-print("👥 Inserting employees...")
+print(" Inserting employees...")
 cursor.execute("""
     INSERT INTO employees (user_id, full_name, phone, position, hire_date)
     SELECT user_id, 'Quản trị viên', '0901234567', 'Quản lý', CURRENT_DATE
@@ -71,7 +71,7 @@ cursor.execute("""
 """)
 
 # 5. Insert categories
-print("📂 Inserting categories...")
+print(" Inserting categories...")
 categories = [
     ('Cà phê', 'Các loại cà phê'),
     ('Món chính', 'Món ăn chính'),
@@ -129,15 +129,15 @@ cursor.close()
 conn.close()
 
 print("✅ Database seeding completed successfully!")
-print("\n📋 Demo accounts:")
+print("\n Demo accounts:")
 print("=" * 50)
-print("👑 Admin/Owner:")
+print(" Admin/Owner:")
 print("   Username: admin")
 print("   Password: admin123")
-print("\n👨‍💼 Manager:")
+print("\n Manager:")
 print("   Username: manager")
 print("   Password: manager123")
-print("\n👤 Staff:")
+print("\n Staff:")
 print("   Username: staff")
 print("   Password: staff123")
 print("=" * 50)

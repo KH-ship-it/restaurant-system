@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Eye, X, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, X, RefreshCw, AlertCircle, CheckCircle, Key } from 'lucide-react';
 
 interface Employee {
   employee_id: number;
@@ -25,6 +25,11 @@ export default function EmployeeManagement() {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  
+  // Password reset state
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const [formData, setFormData] = useState({
     username: '',
@@ -50,7 +55,7 @@ export default function EmployeeManagement() {
     },
     'Phục vụ': {
       role: 'STAFF',
-      route: '/order',
+      route: '/order', 
       description: 'Quyền nhân viên, xem và tạo đơn hàng'
     },
     'Thu ngân': {
@@ -67,7 +72,7 @@ export default function EmployeeManagement() {
     checkToken();
     
     const handleFocus = () => {
-      console.log(' Window focused, checking token...');
+      console.log('🔍 Window focused, checking token...');
       checkToken();
     };
     window.addEventListener('focus', handleFocus);
@@ -76,7 +81,7 @@ export default function EmployeeManagement() {
 
   const checkToken = () => {
     const token = localStorage.getItem('access_token');
-    console.log(' Token check:', token ? 'Found' : 'Not found');
+    console.log('🔑 Token check:', token ? 'Found' : 'Not found');
     setHasToken(!!token);
     
     if (token) {
@@ -108,7 +113,7 @@ export default function EmployeeManagement() {
         },
       });
 
-      console.log(' Response status:', response.status);
+      console.log('📥 Response status:', response.status);
 
       if (response.status === 403) {
         setError('Bạn không có quyền truy cập. Chỉ OWNER/ADMIN mới có thể xem danh sách nhân viên.');
@@ -125,7 +130,7 @@ export default function EmployeeManagement() {
       }
 
       const result = await response.json();
-      console.log(' Employees loaded:', result.data?.length || 0);
+      console.log('✅ Employees loaded:', result.data?.length || 0);
       
       if (result.success && result.data) {
         setEmployees(result.data);
@@ -133,7 +138,7 @@ export default function EmployeeManagement() {
         setEmployees([]);
       }
     } catch (error: any) {
-      console.error(' Error:', error);
+      console.error('❌ Error:', error);
       setError(error.message || 'Không thể tải danh sách nhân viên');
       setEmployees([]);
     } finally {
@@ -148,17 +153,17 @@ export default function EmployeeManagement() {
 
   const handleCreateEmployee = async () => {
     if (!formData.username || !formData.password || !formData.full_name) {
-      alert(' Vui lòng điền đầy đủ thông tin bắt buộc (*)');
+      alert('⚠️ Vui lòng điền đầy đủ thông tin bắt buộc (*)');
       return;
     }
     if (formData.password.length < 6) {
-      alert(' Mật khẩu phải có ít nhất 6 ký tự');
+      alert('⚠️ Mật khẩu phải có ít nhất 6 ký tự');
       return;
     }
 
     const token = localStorage.getItem('access_token');
     if (!token) {
-      alert(' Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      alert('⚠️ Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
       setHasToken(false);
       return;
     }
@@ -180,7 +185,7 @@ export default function EmployeeManagement() {
 
       if (response.ok && result.success) {
         const roleInfo = POSITION_ROLE_MAP[formData.position];
-        showSuccess(`✅ ${result.message || 'Tạo nhân viên thành công!'}\n Quyền: ${roleInfo.role} → Trang: ${roleInfo.route}`);
+        showSuccess(`✅ ${result.message || 'Tạo nhân viên thành công!'}\n📋 Quyền: ${roleInfo.role} → Trang: ${roleInfo.route}`);
         setShowModal(false);
         resetForm();
         fetchEmployees();
@@ -188,7 +193,7 @@ export default function EmployeeManagement() {
         alert('❌ ' + (result.message || 'Tạo nhân viên thất bại'));
       }
     } catch (error: any) {
-      alert(' Lỗi: ' + error.message);
+      alert('❌ Lỗi: ' + error.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -229,28 +234,87 @@ export default function EmployeeManagement() {
 
       if (response.ok && result.success) {
         const roleInfo = POSITION_ROLE_MAP[formData.position];
-        showSuccess(` ${result.message || 'Cập nhật thành công!'}\n🎯 Quyền mới: ${roleInfo.role}`);
+        showSuccess(`✅ ${result.message || 'Cập nhật thành công!'}\n📋 Quyền mới: ${roleInfo.role}`);
         setShowModal(false);
         resetForm();
         fetchEmployees();
       } else {
-        alert(' ' + (result.message || 'Cập nhật thất bại'));
+        alert('❌ ' + (result.message || 'Cập nhật thất bại'));
       }
     } catch (error: any) {
-      alert(' Lỗi: ' + error.message);
+      alert('❌ Lỗi: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ========================================
+  // 🔑 NEW: PASSWORD RESET FUNCTION
+  // ========================================
+  const handleResetPassword = async () => {
+    if (!selectedEmployee) return;
+
+    // Validate
+    if (!newPassword || newPassword.length < 6) {
+      alert('⚠️ Mật khẩu mới phải có ít nhất 6 ký tự');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert('⚠️ Mật khẩu xác nhận không khớp');
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      alert('⚠️ Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+
+    if (!confirm(`🔑 Xác nhận đặt lại mật khẩu cho nhân viên "${selectedEmployee.full_name}"?`)) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      const response = await fetch(`${API_BASE}/api/employees/${selectedEmployee.employee_id}/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify({
+          new_password: newPassword,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        showSuccess(`✅ ${result.message || 'Đặt lại mật khẩu thành công!'}`);
+        setShowPasswordReset(false);
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        alert('❌ ' + (result.message || 'Đặt lại mật khẩu thất bại'));
+      }
+    } catch (error: any) {
+      alert('❌ Lỗi: ' + error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDeleteEmployee = async (employee: Employee) => {
-    if (!confirm(` Xác nhận xóa nhân viên "${employee.full_name}"?\n\nHành động này không thể hoàn tác!`)) {
+    if (!confirm(`⚠️ Xác nhận xóa nhân viên "${employee.full_name}"?\n\nHành động này không thể hoàn tác!`)) {
       return;
     }
 
     const token = localStorage.getItem('access_token');
     if (!token) {
-      alert(' Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      alert('⚠️ Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
       return;
     }
 
@@ -264,16 +328,16 @@ export default function EmployeeManagement() {
         },
       });
 
-      const result = await response.json();
+      const result = await response.json();  
 
       if (response.ok && result.success) {
-        showSuccess(` ${result.message || 'Xóa nhân viên thành công!'}`);
+        showSuccess(`✅ ${result.message || 'Xóa nhân viên thành công!'}`);
         fetchEmployees();
       } else {
-        alert(' ' + (result.message || 'Xóa thất bại'));
+        alert('❌ ' + (result.message || 'Xóa thất bại'));
       }
     } catch (error: any) {
-      alert(' Lỗi: ' + error.message);
+      alert('❌ Lỗi: ' + error.message);
     }
   };
 
@@ -286,6 +350,9 @@ export default function EmployeeManagement() {
       position: 'Phục vụ',
     });
     setSelectedEmployee(null);
+    setShowPasswordReset(false);
+    setNewPassword('');
+    setConfirmPassword('');
   };
 
   const openCreateModal = () => {
@@ -310,6 +377,9 @@ export default function EmployeeManagement() {
   const openViewModal = (employee: Employee) => {
     setSelectedEmployee(employee);
     setModalMode('view');
+    setShowPasswordReset(false);
+    setNewPassword('');
+    setConfirmPassword('');
     setShowModal(true);
   };
 
@@ -381,7 +451,7 @@ export default function EmployeeManagement() {
         {hasToken && (
           <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200">
             <h3 className="text-sm font-bold text-blue-900 mb-3 flex items-center gap-2">
-              <span></span> Tự động phân quyền theo vị trí
+              <span>🔐</span> Tự động phân quyền theo vị trí
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {Object.entries(POSITION_ROLE_MAP).map(([position, info]) => (
@@ -452,7 +522,7 @@ export default function EmployeeManagement() {
                   target="_blank"
                   className="px-6 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all font-semibold inline-flex items-center gap-2"
                 >
-                   Mở trang đăng nhập
+                  🔑 Mở trang đăng nhập
                 </a>
                 <button
                   onClick={checkToken}
@@ -597,8 +667,8 @@ export default function EmployeeManagement() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl">
-            <div className="flex justify-between items-center p-6 border-b">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b sticky top-0 bg-white z-10">
               <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                 {modalMode === 'create' && <><Plus className="w-6 h-6" /> Thêm Nhân Viên</>}
                 {modalMode === 'edit' && <><Pencil className="w-6 h-6" /> Chỉnh Sửa</>}
@@ -609,9 +679,10 @@ export default function EmployeeManagement() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+            <div className="p-6 space-y-4">
               {modalMode !== 'view' ? (
                 <>
+                  {/* CREATE MODE */}
                   {modalMode === 'create' && (
                     <>
                       <div>
@@ -640,6 +711,10 @@ export default function EmployeeManagement() {
                       </div>
                     </>                    
                   )}
+
+                  {/* EDIT MODE */}
+                 
+                  {/* COMMON FIELDS */}
                   <div>
                     <label className="block text-gray-700 text-sm font-semibold mb-2">
                       Họ và tên <span className="text-red-500">*</span>
@@ -675,7 +750,6 @@ export default function EmployeeManagement() {
                         <option key={pos} value={pos}>{pos}</option>
                       ))}
                     </select>
-                    {/* Show role info */}
                     {POSITION_ROLE_MAP[formData.position] && (
                       <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                         <div className="text-xs text-blue-900 space-y-1">
@@ -693,6 +767,9 @@ export default function EmployeeManagement() {
                   </div>
                 </>
               ) : (
+                // ========================================
+                //  VIEW MODE WITH PASSWORD RESET
+                // ========================================
                 selectedEmployee && (
                   <div className="space-y-3">
                     <div className="bg-gray-50 rounded-xl p-4">
@@ -729,12 +806,97 @@ export default function EmployeeManagement() {
                         </div>
                       </div>
                     )}
+
+                    {/* ========================================= */}
+                    {/* 🔑 PASSWORD RESET SECTION */}
+                    {/* ========================================= */}
+                    <div className="border-t-2 border-gray-200 pt-4 mt-4">
+                      {!showPasswordReset ? (
+                        <button
+                          onClick={() => setShowPasswordReset(true)}
+                          className="w-full px-4 py-3 bg-yellow-500 text-white rounded-xl hover:bg-yellow-600 transition-all font-semibold flex items-center justify-center gap-2"
+                        >
+                          <Key className="w-5 h-5" />
+                          Đặt lại mật khẩu
+                        </button>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-3">
+                            <p className="text-sm text-yellow-900 font-semibold">
+                              🔑 Đặt lại mật khẩu cho nhân viên
+                            </p>
+                            <p className="text-xs text-yellow-700 mt-1">
+                              Mật khẩu cũ đã được mã hóa và không thể xem. Vui lòng nhập mật khẩu mới.
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-gray-700 text-sm font-semibold mb-2">
+                              Mật khẩu mới <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="password"
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              className="w-full border-2 border-gray-300 text-gray-900 px-4 py-3 rounded-xl focus:outline-none focus:border-yellow-500"
+                              placeholder="Tối thiểu 6 ký tự"
+                              disabled={isSubmitting}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-gray-700 text-sm font-semibold mb-2">
+                              Xác nhận mật khẩu <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="password"
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                              className="w-full border-2 border-gray-300 text-gray-900 px-4 py-3 rounded-xl focus:outline-none focus:border-yellow-500"
+                              placeholder="Nhập lại mật khẩu"
+                              disabled={isSubmitting}
+                            />
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setShowPasswordReset(false);
+                                setNewPassword('');
+                                setConfirmPassword('');
+                              }}
+                              disabled={isSubmitting}
+                              className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-all font-semibold disabled:opacity-50"
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              onClick={handleResetPassword}
+                              disabled={isSubmitting}
+                              className="flex-1 px-4 py-2.5 bg-yellow-500 text-white rounded-xl hover:bg-yellow-600 transition-all font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                              {isSubmitting ? (
+                                <>
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                  Đang xử lý...
+                                </>
+                              ) : (
+                                <>
+                                  <Key className="w-4 h-4" />
+                                  Xác nhận
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )
               )}
             </div>
 
-            <div className="flex justify-end gap-3 p-6 border-t">
+            <div className="flex justify-end gap-3 p-6 border-t sticky bottom-0 bg-white">
               <button
                 onClick={() => setShowModal(false)}
                 disabled={isSubmitting}

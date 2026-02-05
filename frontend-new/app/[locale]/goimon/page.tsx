@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, Suspense, useTransition } from 'react';
+import { useSearchParams, usePathname, useRouter } from 'next/navigation';
+import { useTranslations, useLocale } from 'next-intl';
 
 interface MenuItem {
   item_id: number;
@@ -34,6 +35,11 @@ interface DebugInfo {
 function OrderPageContent() {
   const searchParams = useSearchParams();
   const tableNumber = searchParams.get('table') || '1';
+  const t = useTranslations('CustomerMenu');
+  const locale = useLocale();
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -47,12 +53,28 @@ function OrderPageContent() {
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   const categories = [
-    { id: 'all', name: 'Tất cả', icon: '🍽️', color: 'bg-gradient-to-br from-slate-500 to-slate-600' },
-    { id: 1, name: 'Cà phê', icon: '☕', color: 'bg-gradient-to-br from-amber-500 to-orange-600' },
-    { id: 2, name: 'Món chính', icon: '🍖', color: 'bg-gradient-to-br from-red-500 to-rose-600' },
-    { id: 3, name: 'Đồ uống', icon: '🥤', color: 'bg-gradient-to-br from-blue-500 to-cyan-600' },
-    { id: 4, name: 'Sinh tố', icon: '🍹', color: 'bg-gradient-to-br from-green-500 to-emerald-600' }
+    { id: 'all', name: t('allCategories'), icon: '', color: 'bg-gradient-to-br from-slate-500 to-slate-600' },
+    { id: 1, name: t('coffee'), icon: '', color: 'bg-gradient-to-br from-amber-500 to-orange-600' },
+    { id: 2, name: t('mainDish'), icon: '', color: 'bg-gradient-to-br from-red-500 to-rose-600' },
+    { id: 3, name: t('drinks'), icon: '', color: 'bg-gradient-to-br from-blue-500 to-cyan-600' },
+    { id: 4, name: t('smoothie'), icon: '', color: 'bg-gradient-to-br from-green-500 to-emerald-600' }
   ];
+
+  const switchLanguage = (newLocale: string) => {
+    if (newLocale === locale) return;
+    
+    startTransition(() => {
+      // Set cookie for locale preference
+      document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000`;
+      
+      // Navigate to new locale path
+      const segments = pathname.split('/');
+      segments[1] = newLocale;
+      const newPath = segments.join('/');
+      
+      router.replace(`${newPath}?table=${tableNumber}`);
+    });
+  };
 
   useEffect(() => {
     loadMenu();
@@ -73,7 +95,7 @@ function OrderPageContent() {
       
       const endpoint = `${API_BASE}/api/menu/public`;
       
-      console.log('🔄 Loading menu from:', endpoint);
+      console.log('Loading menu from:', endpoint);
       
       setDebugInfo({
         apiBase: API_BASE,
@@ -89,7 +111,7 @@ function OrderPageContent() {
         },
       });
 
-      console.log('📡 Response status:', response.status);
+      console.log('Response status:', response.status);
 
       setDebugInfo((prev: DebugInfo) => ({
         ...prev,
@@ -125,11 +147,11 @@ function OrderPageContent() {
       } else {
         console.log('⚠️ Menu is empty or no data returned');
         setMenuItems([]);
-        setError('Thực đơn chưa có món nào');
+        setError(t('noItems'));
       }
     } catch (err: any) {
-      console.error('❌ Error loading menu:', err);
-      setError(err.message || 'Không thể tải thực đơn');
+      console.error(' Error loading menu:', err);
+      setError(err.message || t('alerts.connectionError'));
       
       setDebugInfo((prev: DebugInfo) => ({
         ...prev,
@@ -179,7 +201,7 @@ function OrderPageContent() {
 
   const syncWithStaffPage = (orderId: string, orderData: any) => {
     try {
-      console.log('🔄 Syncing order to staff page:', orderId);
+      console.log('Syncing order to staff page:', orderId);
       
       const staffOrder = {
         id: orderId,
@@ -197,32 +219,31 @@ function OrderPageContent() {
         paymentStatus: 'unpaid',
         createdAt: Date.now()
       };
-
       console.log('📦 Order data:', staffOrder);
       
       const existingOrders = JSON.parse(localStorage.getItem('staff-orders') || '[]');
       const updatedOrders = [staffOrder, ...existingOrders];
       localStorage.setItem('staff-orders', JSON.stringify(updatedOrders));
       
-      console.log('✅ Order synced successfully. Total orders:', updatedOrders.length);
+      console.log(' Order synced successfully. Total orders:', updatedOrders.length);
 
       window.dispatchEvent(new CustomEvent('new-order', { 
         detail: staffOrder 
       }));
 
     } catch (error) {
-      console.error('❌ Error syncing with staff page:', error);
+      console.error('Error syncing with staff page:', error);
     }
   };
 
   const handleSubmitOrder = async () => {
     if (!customerName.trim()) {
-      alert('Vui lòng nhập tên của bạn trước khi đặt món! 😊');
+      alert(t('alerts.enterNameFirst'));
       return;
     }
 
     if (cart.length === 0) {
-      alert('Giỏ hàng của bạn đang trống! Hãy chọn món bạn thích nhé! 🍽️');
+      alert(t('alerts.cartEmpty'));
       return;
     }
 
@@ -249,38 +270,44 @@ function OrderPageContent() {
         body: JSON.stringify(orderData),
       });
 
-      console.log('📡 Order response status:', response.status);
+      console.log(' Order response status:', response.status);
 
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ Order response:', result);
+        console.log(' Order response:', result);
         
         if (result.success) {
           syncWithStaffPage(result.data.order_id.toString(), orderData);
           
-          alert(`🎉 Đặt món thành công!\n\nMã đơn hàng: #${result.data.order_id}\nBàn số: ${tableNumber}\nTổng tiền: ${(getTotalAmount() / 1000).toFixed(1)}đ\n\nNhân viên sẽ phục vụ bạn ngay! ✨`);         
+  const successMessage = t('alerts.orderSuccess', {
+   orderId: result.data.order_id,
+   table: tableNumber,
+   total: (getTotalAmount() / 1000).toFixed(1)
+});
+          
+          alert(successMessage);
           setCart([]);
           setCustomerName('');
           setShowCart(false);
         } else {
-          alert('❌ ' + (result.message || 'Không thể đặt món. Vui lòng thử lại!'));
+          alert(' ' + (result.message || t('alerts.orderError')));
         }
       } else {
-        let errorMessage = 'Không thể đặt món';
+        let errorMessage = t('alerts.orderError');
         try {
           const errorData = await response.json();
           errorMessage = errorData.detail || errorData.message || errorMessage;
-          console.error('❌ Order error (JSON):', errorData);
+          console.error('Order error (JSON):', errorData);
         } catch {
           const errorText = await response.text();
           errorMessage = errorText || errorMessage;
-          console.error('❌ Order error (text):', errorText);
+          console.error(' Order error (text):', errorText);
         }
-        alert(`❌ Lỗi: ${errorMessage}\n\nVui lòng thử lại sau!`);
+        alert(` ${errorMessage}\n\n${t('retry')}!`);
       }
     } catch (error: any) {
-      console.error('❌ Order error:', error);
-      alert('❌ Không thể kết nối đến hệ thống!\nVui lòng kiểm tra kết nối và thử lại.');
+      console.error(' Order error:', error);
+      alert(t('alerts.connectionError'));
     }
   };
 
@@ -300,8 +327,8 @@ function OrderPageContent() {
               <div className="w-2 h-2 bg-orange-500 rounded-full animate-ping" style={{animationDelay: '0.4s'}}></div>
             </div>
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Đang tải thực đơn</h2>
-          <p className="text-gray-600">Bàn số {tableNumber}</p>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('loadingMessage')}</h2>
+          <p className="text-gray-600">{t('table')} {tableNumber}</p>
         </div>
       </div>
     );
@@ -311,14 +338,14 @@ function OrderPageContent() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center p-4">
         <div className="text-center max-w-md bg-white rounded-3xl shadow-xl p-8">
-          <div className="text-7xl mb-4">😔</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-3">Oops! Có lỗi xảy ra</h2>
+          <div className="text-7xl mb-4"></div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-3">{t('errorTitle')}</h2>
           <p className="text-red-600 mb-6">{error}</p>
           <button
             onClick={loadMenu}
             className="px-8 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full font-semibold hover:shadow-lg transition-all"
           >
-            🔄 Thử lại
+            🔄 {t('retry')}
           </button>
         </div>
       </div>
@@ -330,13 +357,13 @@ function OrderPageContent() {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-slate-50 flex items-center justify-center p-4">
         <div className="text-center max-w-md bg-white rounded-3xl shadow-xl p-8">
           <div className="text-7xl mb-4">📋</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-3">Thực đơn đang cập nhật</h2>
-          <p className="text-gray-600 mb-6">Hiện tại chưa có món nào. Vui lòng quay lại sau!</p>
+          <h2 className="text-2xl font-bold text-gray-800 mb-3">{t('menuUpdating')}</h2>
+          <p className="text-gray-600 mb-6">{t('comeBackLater')}</p>
           <button
             onClick={loadMenu}
             className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full font-semibold hover:shadow-lg transition-all"
           >
-            🔄 Tải lại
+            🔄 {t('reload')}
           </button>
         </div>
       </div>
@@ -352,22 +379,52 @@ function OrderPageContent() {
             <div>
               <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                 <span>🍽️</span>
-                <span>Bàn {tableNumber}</span>
+                <span>{t('table')} {tableNumber}</span>
               </h1>
-              <p className="text-sm text-gray-500 mt-0.5">{menuItems.length} món có sẵn</p>
+              <p className="text-sm text-gray-500 mt-0.5">{menuItems.length} {t('itemsAvailable')}</p>
             </div>
             
-            {/* Cart Button */}
-            {cart.length > 0 && (
-              <button
-                onClick={() => setShowCart(!showCart)}
-                className="relative bg-orange-500 text-white px-5 py-2.5 rounded-full font-semibold hover:bg-orange-600 transition-all shadow-md flex items-center gap-2"
-              >
-                <span>🛒</span>
-                <span>{cart.reduce((sum, item) => sum + item.quantity, 0)}</span>
-                <span className="hidden sm:inline">món</span>
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {/* Language Switcher - Smooth transition with visual feedback */}
+              <div className={`flex bg-gray-100 rounded-full p-1 transition-all duration-200 ${
+                isPending ? 'opacity-60 pointer-events-none' : 'opacity-100'
+              }`}>
+                <button
+                  onClick={() => switchLanguage('vi')}
+                  disabled={isPending}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                    locale === 'vi'
+                      ? 'bg-white text-gray-800 shadow-sm scale-105'
+                      : 'text-gray-600 hover:text-gray-800 hover:scale-105'
+                  } ${isPending ? 'cursor-wait' : 'cursor-pointer'}`}
+                >
+                   VI
+                </button>
+                <button
+                  onClick={() => switchLanguage('en')}
+                  disabled={isPending}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                    locale === 'en'
+                      ? 'bg-white text-gray-800 shadow-sm scale-105'
+                      : 'text-gray-600 hover:text-gray-800 hover:scale-105'
+                  } ${isPending ? 'cursor-wait' : 'cursor-pointer'}`}
+                >
+                   EN
+                </button>
+              </div>
+
+              {/* Cart Button */}
+              {cart.length > 0 && (
+                <button
+                  onClick={() => setShowCart(!showCart)}
+                  className="relative bg-orange-500 text-white px-5 py-2.5 rounded-full font-semibold hover:bg-orange-600 transition-all shadow-md flex items-center gap-2"
+                >
+                  <span>🛒</span>
+                  <span>{cart.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                  <span className="hidden sm:inline">{t('cart.items')}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -377,10 +434,10 @@ function OrderPageContent() {
         <div className="bg-amber-50 border-b border-amber-200 sticky top-[76px] z-40">
           <div className="max-w-7xl mx-auto px-4 py-3">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">👋</span>
+              <span className="text-2xl">👤</span>
               <input
                 type="text"
-                placeholder="Tên của bạn là gì?"
+                placeholder={t('enterName')}
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 className="flex-1 bg-white border border-amber-300 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
@@ -440,7 +497,7 @@ function OrderPageContent() {
                   {!available && (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                       <span className="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-semibold">
-                        Hết món
+                        {t('outOfStock')}
                       </span>
                     </div>
                   )}
@@ -478,7 +535,7 @@ function OrderPageContent() {
                           : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       }`}
                     >
-                      {available ? '+ Thêm' : 'Hết'}
+                      {available ? `+ ${t('addToCart')}` : t('outOfStock')}
                     </button>
                   </div>
                 </div>
@@ -490,7 +547,7 @@ function OrderPageContent() {
         {filteredItems.length === 0 && (
           <div className="text-center py-16">
             <div className="text-6xl mb-3 opacity-50">🔍</div>
-            <p className="text-gray-500">Không có món nào trong danh mục này</p>
+            <p className="text-gray-500">{t('noItemsInCategory')}</p>
           </div>
         )}
       </div>
@@ -509,7 +566,7 @@ function OrderPageContent() {
               <div className="flex items-center gap-3">
                 <span className="text-xl">🛒</span>
                 <span className="font-semibold text-gray-800">
-                  Giỏ hàng ({cart.reduce((sum, item) => sum + item.quantity, 0)} món)
+                  {t('cart.title')} ({cart.reduce((sum, item) => sum + item.quantity, 0)} {t('cart.items')})
                 </span>
               </div>
               <span className="text-gray-400">
@@ -550,11 +607,10 @@ function OrderPageContent() {
                 </div>
               ))}
             </div>
-
             {/* Total & Submit */}
             <div className="px-4 py-4 border-t bg-gray-50">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-gray-700 font-medium">Tổng cộng:</span>
+                <span className="text-gray-700 font-medium">{t('cart.total')}</span>
                 <span className="text-2xl font-bold text-orange-600">
                   {(getTotalAmount() / 1000).toFixed(1)}đ
                 </span>
@@ -570,9 +626,9 @@ function OrderPageContent() {
                 }`}
               >
                 {customerName.trim() ? (
-                  <span>🛎️ Đặt món ngay</span>
+                  <span>🛎️ {t('cart.orderNow')}</span>
                 ) : (
-                  <span>👤 Nhập tên để đặt món</span>
+                  <span>👤 {t('cart.enterNameToOrder')}</span>
                 )}
               </button>
             </div>

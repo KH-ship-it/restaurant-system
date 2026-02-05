@@ -27,14 +27,29 @@
     "noItems": "No items in the menu yet",
     "comeBackLater": "Please come back later",
     "loading": "Loading menu...",
+    "loadingMessage": "Loading menu",
+    "errorTitle": "Oops! An error occurred",
+    "retry": "Retry",
+    "menuUpdating": "Menu is updating",
+    "reload": "Reload",
+    "allCategories": "All",
+    "coffee": "Coffee",
+    "mainDish": "Main Dish",
+    "drinks": "Drinks",
+    "smoothie": "Smoothie",
+    "outOfStock": "Out of stock",
+    "addToCart": "Add",
+    "enterName": "What's your name?",
+    "noItemsInCategory": "No items in this category",
     "cart": {
-      "title": "Order",
+      "title": "Cart",
+      "items": "items",
       "empty": "Cart is empty",
       "addItems": "Add items to cart to order",
-      "items": "Items:",
       "total": "Total:",
-      "checkout": "Order",
-      "itemCount": "items"
+      "checkout": "Order now",
+      "enterNameToOrder": "Enter name to order",
+      "orderNow": "Order now"
     },
     "payment": {
       "title": "Confirm Order",
@@ -59,11 +74,12 @@
       "close": "Close"
     },
     "alerts": {
-      "cartEmpty": "Cart is empty!",
-      "enterName": "Please enter your name:",
-      "defaultName": "Customer",
-      "orderSuccess": "Order successful! Thank you for ordering at Haven!",
-      "orderError": "An error occurred while placing order. Please try again!"
+      "enterNameFirst": "Please enter your name before ordering!",
+      "cartEmpty": "Your cart is empty! Please select items you like! 🍽️",
+      "orderSuccess": "🎉 Order successful!\n\nOrder ID: #{orderId}\nTable: {table}\nTotal: {total}đ\n\nStaff will serve you soon! ✨",
+      "orderError": "Cannot place order",
+      "connectionError": "Cannot connect to system!\nPlease check your connection and try again.",
+      "defaultName": "Customer"
     }
   }
 }

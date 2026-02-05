@@ -841,7 +841,7 @@ const InventoryManagement = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#8b949e] mb-2">Giá nhập (VNĐ)</label>
+                  <label className="block text-sm font-medium text-[#8b949e] mb-2">Giá nhập(VNĐ)</label>
                   <input
                     type="number"
                     placeholder="0"
@@ -1054,7 +1054,6 @@ const InventoryManagement = () => {
           </div>
         </div>
       )}
-
       {showHistoryModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-[#161b22] rounded-2xl shadow-2xl w-full max-w-4xl border border-[#30363d] max-h-[80vh] flex flex-col">

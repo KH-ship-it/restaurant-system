@@ -23,11 +23,11 @@ export default function LoginPage() {
 
   //  ROLE TO ROUTE MAPPING - FIXED
   const ROLE_ROUTES: Record<string, string> = {
-    'OWNER': '/thongke',      // Chủ nhà hàng → Thống kê
-    'ADMIN': '/thongke',      // Admin → Thống kê
-    'KITCHEN': '/order',      // Đầu bếp → Order
-    'CASHIER': '/thungan',    // Thu ngân → Thu ngân
-    'STAFF': '/order',        // Nhân viên phục vụ → Order
+    'OWNER': '/thongke',      
+    'ADMIN': '/thongke',     
+    'KITCHEN': '/order',      
+    'CASHIER': '/thungan',    
+    'STAFF': '/order',        
   };
 
   // Check API connection on mount
@@ -37,7 +37,7 @@ export default function LoginPage() {
 
   const checkAPIConnection = async () => {
     try {
-      console.log('🔍 Checking API connection:', API_URL);
+      console.log(' Checking API connection:', API_URL);
       
       const response = await fetch(`${API_URL}/health`, {
         headers: {
@@ -46,15 +46,15 @@ export default function LoginPage() {
       });
       
       if (response.ok) {
-        console.log('✅ API is online');
+        console.log(' API is online');
         setApiStatus('ok');
       } else {
-        console.error('❌ API returned error:', response.status);
+        console.error(' API returned error:', response.status);
         setApiStatus('error');
         setError('Server không phản hồi. Vui lòng thử lại sau.');
       }
     } catch (error) {
-      console.error('❌ Cannot connect to API:', error);
+      console.error(' Cannot connect to API:', error);
       setApiStatus('error');
       setError('Không thể kết nối tới server. Vui lòng kiểm tra kết nối.');
     }
@@ -71,7 +71,7 @@ export default function LoginPage() {
     setLoading(true);
 
     console.log('\n' + '='.repeat(60));
-    console.log('🔐 LOGIN ATTEMPT');
+    console.log(' LOGIN ATTEMPT');
     console.log('='.repeat(60));
     console.log('Username:', formData.username);
     console.log('API URL:', API_URL);
@@ -88,10 +88,10 @@ export default function LoginPage() {
         
         // 🔥 FIX: Save token with BOTH keys for compatibility
         localStorage.setItem('user', JSON.stringify(user));
-        localStorage.setItem('token', token);           // ← NEW: For table management page
-        localStorage.setItem('access_token', token);    // ← OLD: For API client
+        localStorage.setItem('token', token);           //  For table management page
+        localStorage.setItem('access_token', token);    //  For API client
         
-        console.log('💾 Saved to localStorage:');
+        console.log('Saved to localStorage:');
         console.log('  - user:', JSON.stringify(user));
         console.log('  - token:', token.substring(0, 20) + '...');
         console.log('  - access_token:', token.substring(0, 20) + '...');
@@ -102,21 +102,21 @@ export default function LoginPage() {
         
         const userRole = user.role;
         
-        console.log('\n✅ LOGIN SUCCESSFUL');
-        console.log('👤 User:', user.username);
-        console.log('🎭 Role:', userRole);
-        console.log('📛 Full Name:', user.fullName);
+        console.log('\n LOGIN SUCCESSFUL');
+        console.log(' User:', user.username);
+        console.log(' Role:', userRole);
+        console.log(' Full Name:', user.fullName);
         
         //  Get redirect route based on role
         const redirectRoute = ROLE_ROUTES[userRole];
         
         if (redirectRoute) {
-          console.log('🔀 Redirecting to:', `/${currentLocale}${redirectRoute}`);
+          console.log('Redirecting to:', `/${currentLocale}${redirectRoute}`);
           console.log('='.repeat(60) + '\n');
           router.push(`/${currentLocale}${redirectRoute}`);
         } else {
           // Fallback if role not found
-          console.warn('⚠️  Role not found in mapping, using /order as fallback');
+          console.warn(' Role not found in mapping, using /order as fallback');
           console.log('='.repeat(60) + '\n');
           router.push(`/${currentLocale}/order`);
         }
@@ -125,7 +125,7 @@ export default function LoginPage() {
         throw new Error('Login failed: ' + (response.data.message || 'Unknown error'));
       }
     } catch (err: any) {
-      console.error('\n❌ LOGIN ERROR');
+      console.error('\n LOGIN ERROR');
       console.error(err);
       console.log('='.repeat(60) + '\n');
       
@@ -147,7 +147,7 @@ export default function LoginPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <div className="text-center">
-          <div className="text-6xl mb-4 animate-bounce">🔍</div>
+          <div className="text-6xl mb-4 animate-bounce"></div>
           <div className="text-gray-600 text-lg">Đang kiểm tra kết nối...</div>
         </div>
       </div>
@@ -167,7 +167,7 @@ export default function LoginPage() {
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            🇻🇳 Tiếng Việt
+            Tiếng Việt
           </button>
           <button
             onClick={() => handleLanguageChange('en')}
@@ -177,7 +177,7 @@ export default function LoginPage() {
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            🇬🇧 English
+             English
           </button>
         </div>
       </div>
@@ -214,7 +214,7 @@ export default function LoginPage() {
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               <div className="flex items-start gap-2">
-                <span className="text-lg">❌</span>
+                <span className="text-lg"></span>
                 <div className="flex-1">
                   <div className="font-medium mb-1">Lỗi đăng nhập</div>
                   <div>{error}</div>
@@ -227,7 +227,7 @@ export default function LoginPage() {
           {apiStatus === 'error' && (
             <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg text-sm">
               <div className="flex items-start gap-2">
-                <span className="text-lg">⚠️</span>
+                <span className="text-lg"></span>
                 <div className="flex-1">
                   <div className="font-medium mb-1">Server không khả dụng</div>
                   <div className="text-xs mb-2">
@@ -237,7 +237,7 @@ export default function LoginPage() {
                     onClick={checkAPIConnection}
                     className="text-xs underline hover:no-underline"
                   >
-                    🔄 Thử kết nối lại
+                     Thử kết nối lại
                   </button>
                 </div>
               </div>
@@ -302,7 +302,7 @@ export default function LoginPage() {
               disabled={loading || apiStatus === 'error'}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
             >
-              {loading ? '⏳ Đang đăng nhập...' : '🔐 Đăng nhập'}
+              {loading ? ' Đang đăng nhập...' : ' Đăng nhập'}
             </button>
           </form>
 
@@ -314,13 +314,13 @@ export default function LoginPage() {
                 const token = localStorage.getItem('token');
                 const accessToken = localStorage.getItem('access_token');
                 const user = localStorage.getItem('user');
-                console.log('📊 Debug Info:');
+                console.log('Debug Info:');
                 console.log('  API URL:', API_URL);
                 console.log('  Status:', apiStatus);
                 console.log('  token:', token ? token.substring(0, 20) + '...' : 'null');
                 console.log('  access_token:', accessToken ? accessToken.substring(0, 20) + '...' : 'null');
                 console.log('  user:', user);
-                alert(`API URL: ${API_URL}\nStatus: ${apiStatus}\ntoken: ${token ? 'Có ✅' : 'Không ❌'}\naccess_token: ${accessToken ? 'Có ✅' : 'Không ❌'}\nUser: ${user ? 'Có ✅' : 'Không ❌'}`);
+                alert(`API URL: ${API_URL}\nStatus: ${apiStatus}\ntoken: ${token ? 'Có ' : 'Không '}\naccess_token: ${accessToken ? 'Có ' : 'Không '}\nUser: ${user ? 'Có ' : 'Không '}`);
               }}
               className="text-xs text-gray-400 hover:text-gray-600 underline"
             >

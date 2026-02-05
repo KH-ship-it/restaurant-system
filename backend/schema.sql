@@ -271,9 +271,9 @@ SELECT
 -- ==========================================
 -- LOGIN CREDENTIALS
 -- ==========================================
--- 🔐 Admin: admin / admin123
--- 👤 Employee: nhanvien01 / admin123
--- 👤 Employee: nhanvien02 / admin123
--- 👨‍🍳 Kitchen: beptruong / admin123
--- 💰 Cashier: thungan01 / admin123
+--  Admin: admin / admin123
+--  Employee: nhanvien01 / admin123
+--  Employee: nhanvien02 / admin123
+--  Kitchen: beptruong / admin123
+--  Cashier: thungan01 / admin123
 -- ==========================================

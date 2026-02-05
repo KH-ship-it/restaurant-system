@@ -143,7 +143,6 @@ export default function StaffOrderManagement() {
       setIsCancelling(false);
     }
   };
-
   const viewOrderDetail = (order: Order) => {
     setSelectedOrder(order);
     setShowDetailModal(true);

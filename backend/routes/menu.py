@@ -86,9 +86,7 @@ def get_public_menu_items(conn=Depends(get_db)):
         "count": len(items),
         "data": items
     }
-
-
-# ✅ CREATE MENU ITEM
+# CREATE MENU ITEM
 @router.post("")
 def create_menu_item(item: MenuItemCreate, conn=Depends(get_db)):
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -110,11 +108,9 @@ def create_menu_item(item: MenuItemCreate, conn=Depends(get_db)):
             item.image_url or 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400',
             status_value
         ))
-
         new_item = cursor.fetchone()
         conn.commit()
         cursor.close()
-
         return {
             "success": True,
             "message": "Menu item created successfully",
@@ -126,9 +122,7 @@ def create_menu_item(item: MenuItemCreate, conn=Depends(get_db)):
         cursor.close()
         print(f"🔥 CREATE ERROR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# ✅ UPDATE MENU ITEM
+#  UPDATE MENU ITEM
 @router.put("/{item_id}")
 def update_menu_item(item_id: int, item: MenuItemUpdate, conn=Depends(get_db)):
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -137,10 +131,8 @@ def update_menu_item(item_id: int, item: MenuItemUpdate, conn=Depends(get_db)):
         if not cursor.fetchone():
             cursor.close()
             raise HTTPException(status_code=404, detail="Menu item not found")
-
         update_fields = []
         params = []
-
         for field, value in item.dict(exclude_unset=True).items():
             update_fields.append(f"{field} = %s")
             params.append(value.upper() if field == "status" else value)

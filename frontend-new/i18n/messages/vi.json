@@ -12,7 +12,7 @@
     "loggingIn": "Đang đăng nhập...",
     "noAccount": "Chưa có tài khoản?",
     "registerNow": "Đăng ký ngay",
-    "demoAccounts": "",
+    "demoAccounts": "Tài khoản demo:",
     "loginError": "Đăng nhập thất bại. Vui lòng thử lại."
   },
   "CustomerMenu": {
@@ -28,14 +28,29 @@
     "noItems": "Chưa có món nào trong thực đơn",
     "comeBackLater": "Vui lòng quay lại sau",
     "loading": "Đang tải thực đơn...",
+    "loadingMessage": "Đang tải thực đơn",
+    "errorTitle": "Oops! Có lỗi xảy ra",
+    "retry": "Thử lại",
+    "menuUpdating": "Thực đơn đang cập nhật",
+    "reload": "Tải lại",
+    "allCategories": "Tất cả",
+    "coffee": "Cà phê",
+    "mainDish": "Món chính",
+    "drinks": "Đồ uống",
+    "smoothie": "Sinh tố",
+    "outOfStock": "Hết món",
+    "addToCart": "Thêm",
+    "enterName": "Tên của bạn là gì?",
+    "noItemsInCategory": "Không có món nào trong danh mục này",
     "cart": {
-      "title": "Đặt hàng",
+      "title": "Giỏ hàng",
+      "items": "món",
       "empty": "Giỏ hàng trống",
       "addItems": "Thêm món vào giỏ để đặt hàng",
-      "items": "Số món:",
       "total": "Tổng cộng:",
       "checkout": "Đặt hàng",
-      "itemCount": "món"
+      "enterNameToOrder": "Nhập tên để đặt món",
+      "orderNow": "Đặt món ngay"
     },
     "payment": {
       "title": "Xác nhận đặt món",
@@ -60,11 +75,12 @@
       "close": "Đóng"
     },
     "alerts": {
-      "cartEmpty": "Giỏ hàng trống!",
-      "enterName": "Vui lòng nhập tên của bạn:",
-      "defaultName": "Khách hàng",
-      "orderSuccess": "Đặt hàng thành công! Cảm ơn bạn đã đặt hàng tại Haven!",
-      "orderError": "Có lỗi xảy ra khi đặt hàng. Vui lòng thử lại!"
+      "enterNameFirst": "Vui lòng nhập tên của bạn trước khi đặt món!",
+      "cartEmpty": "Giỏ hàng của bạn đang trống! Hãy chọn món bạn thích nhé! 🍽️",
+      "orderSuccess": "🎉 Đặt món thành công!\n\nMã đơn hàng: #{orderId}\nBàn số: {table}\nTổng tiền: {total}đ\n\nNhân viên sẽ phục vụ bạn ngay! ✨",
+      "orderError": "Không thể đặt món",
+      "connectionError": "Không thể kết nối đến hệ thống!\nVui lòng kiểm tra kết nối và thử lại.",
+      "defaultName": "Khách hàng"
     }
   }
 }

@@ -25,7 +25,6 @@ export const authOptions: NextAuthOptions = {
             }),
             headers: { "Content-Type": "application/json" }
           })
-          
           const user = await res.json()
           
           // Nếu đăng nhập thành công, return user
@@ -55,7 +54,6 @@ export const authOptions: NextAuthOptions = {
     signIn: "/vi/login",
     error: "/vi/login",
   },
-
   // Session config (JWT hoặc database)
   session: {
     strategy: "jwt",

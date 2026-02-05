@@ -1,4 +1,4 @@
-# backend/main.py - WITH VALIDATION ERROR HANDLER
+# backend/main.py - WITH CASHIER ROUTER FIXED
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
     print(f" Docs: http://localhost:8000/docs")
     print("="*60 + "\n")
     yield
-    print("\nShutting down...\n")
+    print("\n Shutting down...\n")
 
 app = FastAPI(
     title="Restaurant Management API",
@@ -35,7 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-print("CORS: Allow all origins")
+print(" CORS: Allow all origins")
 
 # ==================== EXCEPTION HANDLERS ====================
 
@@ -43,7 +43,6 @@ print("CORS: Allow all origins")
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle Pydantic validation errors"""
     
-    # Get request body
     try:
         body = await request.body()
         body_str = body.decode('utf-8')
@@ -63,13 +62,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         print(f"    Type: {error['type']}")
     print(f"{'='*70}\n")
     
-    # Format error messages for user
     error_messages = []
     for error in exc.errors():
-        field = '.'.join(str(x) for x in error['loc'][1:])  # Skip 'body'
+        field = '.'.join(str(x) for x in error['loc'][1:])
         msg = error['msg']
         error_messages.append(f"{field}: {msg}")
-    
     return JSONResponse(
         status_code=422,
         content={
@@ -80,7 +77,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         },
         headers={"Access-Control-Allow-Origin": "*"}
     )
-
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
     return JSONResponse(
@@ -107,7 +103,6 @@ async def add_cors(request: Request, call_next):
     response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
-# OPTIONS handler
 @app.options("/{full_path:path}")
 async def options_handler(full_path: str):
     return JSONResponse(
@@ -126,8 +121,6 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
-
-# ==================== UTILITY ENDPOINTS ====================
 
 class PasswordHashRequest(BaseModel):
     password: str
@@ -150,6 +143,8 @@ def create_hash(request: PasswordHashRequest):
 
 # ==================== INCLUDE ROUTERS ====================
 
+print("\n📦 Loading routers...")
+
 # Import and include auth router
 try:
     from routes import auth
@@ -164,15 +159,55 @@ except Exception as e:
 try:
     from routes import employees
     app.include_router(employees.router)
-    print(" Employees router loaded")
+    print("Employees router loaded")
 except Exception as e:
     print(f" Employees router failed: {e}")
     import traceback
     traceback.print_exc()
 
+# Import and include tables router
+try:
+    from routes import tables
+    app.include_router(tables.router)
+    print(" Tables router loaded")
+except Exception as e:
+    print(f"Tables router failed: {e}")
+    import traceback
+    traceback.print_exc()
+
+# Import and include dashboard router
+try:
+    from routes import dashboard
+    app.include_router(dashboard.router)
+    print("Dashboard router loaded")
+except Exception as e:
+    print(f" Dashboard router failed: {e}")
+    import traceback
+    traceback.print_exc()
+
+# Import and include payment router
+try:
+    from routes import payment
+    app.include_router(payment.router)
+    print(" Payment router loaded")
+except Exception as e:
+    print(f" Payment router failed: {e}")
+    import traceback
+    traceback.print_exc()
+
+# Import and include CASHIER router (CRITICAL FIX)
+try:
+    from routes import cashier
+    app.include_router(cashier.router)
+    print(" Cashier router loaded")
+except Exception as e:
+    print(f"Cashier router failed: {e}")
+    import traceback
+    traceback.print_exc()
+
 # Import other routers if they exist
 try:
-    from routes import menu, order, tables, kitchen
+    from routes import menu, order, kitchen
     
     app.include_router(menu.router)
     print(" Menu router loaded")
@@ -180,20 +215,20 @@ try:
     app.include_router(order.router)
     print(" Order router loaded")
     
-    app.include_router(tables.router)
-    print(" Tables router loaded")
-    
     app.include_router(kitchen.router)
     print(" Kitchen router loaded")
 except ImportError as e:
     print(f"ℹ  Some routers not found: {e}")
 
-# ==================== RUN SERVER ====================
+print("\n" + "="*60)
+print(" All routers loaded successfully!")
+print("="*60 + "\n")
+
 
 if __name__ == "__main__":
     import uvicorn
     
-    print("\n🚀 Starting server...\n")
+    print("\n Starting server...\n")
     
     uvicorn.run(
         "main:app",

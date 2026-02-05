@@ -24,7 +24,7 @@ class UserLogin(BaseModel):
 
 def normalize_role_name(role_name: str, role_id: int) -> str:
     """
-    🔥 FIX: Chuẩn hóa role_name từ tiếng Việt sang tiếng Anh
+    FIX: Chuẩn hóa role_name từ tiếng Việt sang tiếng Anh
     
     Ví dụ: "Quản lý" -> "ADMIN"
     
@@ -61,11 +61,11 @@ def normalize_role_name(role_name: str, role_id: int) -> str:
     
     # Fallback theo role_id
     ROLE_ID_MAPPING = {
-        1: "ADMIN",      # Quản lý / Owner
-        2: "ADMIN",      # Admin
-        3: "KITCHEN",    # Đầu bếp
-        4: "CASHIER",    # Thu ngân
-        5: "STAFF"       # Phục vụ
+        1: "ADMIN",      
+        2: "ADMIN",      
+        3: "KITCHEN",    
+        4: "CASHIER",    
+        5: "STAFF"       
     }
     
     return ROLE_ID_MAPPING.get(role_id, "STAFF")
@@ -82,7 +82,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         plain_password = plain_password.strip()
         hashed_password = hashed_password.strip()
         
-        print(f"🔐 Verifying password:")
+        print(f" Verifying password:")
         print(f"   Plain password length: {len(plain_password)}")
         print(f"   Hash starts with: {hashed_password[:10]}")
         
@@ -95,7 +95,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return result
         
     except Exception as e:
-        print(f"❌ Verification error: {type(e).__name__}: {e}")
+        print(f" Verification error: {type(e).__name__}: {e}")
         return False
 
 # ==================== JWT FUNCTIONS ====================
@@ -113,7 +113,7 @@ def create_access_token(user_id: int, username: str, role: str):
     }
     
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    print(f"🎫 Token created: {token[:30]}...")
+    print(f" Token created: {token[:30]}...")
     
     return token
 
@@ -144,7 +144,7 @@ def create_password_hash(password: str):
 @router.post("/login")
 async def login(credentials: UserLogin):
     """
-    🔥 FIXED: Login endpoint with role normalization
+     FIXED: Login endpoint with role normalization
     
     Trả về role_name đã được chuẩn hóa (ADMIN, KITCHEN, STAFF, CASHIER, OWNER)
     thay vì tên tiếng Việt từ database
@@ -155,17 +155,17 @@ async def login(credentials: UserLogin):
     
     try:
         print("\n" + "="*70)
-        print(f"🔐 LOGIN ATTEMPT")
+        print(f" LOGIN ATTEMPT")
         print("="*70)
-        print(f"📧 Username: {credentials.username}")
-        print(f"🔑 Password: {'*' * len(credentials.password)} (length: {len(credentials.password)})")
+        print(f"Username: {credentials.username}")
+        print(f" Password: {'*' * len(credentials.password)} (length: {len(credentials.password)})")
         
         # Connect to database
         conn = get_db_connection()
         cursor = conn.cursor()
-        print(f"✅ Database connected")
+        print(f" Database connected")
         
-        # 🔥 CRITICAL: JOIN with roles table to get role_name
+        #  CRITICAL: JOIN with roles table to get role_name
         query = """
             SELECT 
                 u.user_id, 
@@ -183,19 +183,19 @@ async def login(credentials: UserLogin):
             WHERE u.username = %s
         """
         
-        print(f"\n🔍 Executing query for username: {credentials.username}")
+        print(f"\n Executing query for username: {credentials.username}")
         cursor.execute(query, (credentials.username,))
         user = cursor.fetchone()
         
         if not user:
-            print(f"❌ User '{credentials.username}' NOT FOUND in database")
+            print(f" User '{credentials.username}' NOT FOUND in database")
             print("="*70 + "\n")
             raise HTTPException(
                 status_code=401,
                 detail="Tên đăng nhập hoặc mật khẩu không đúng"
             )
         
-        print(f"\n✅ User found in database:")
+        print(f"\n User found in database:")
         print(f"   User ID: {user['user_id']}")
         print(f"   Username: {user['username']}")
         print(f"   Full Name: {user.get('full_name', 'N/A')}")
@@ -205,7 +205,7 @@ async def login(credentials: UserLogin):
         
         # Check if user is active
         if not user.get('is_active', True):
-            print(f"❌ User is inactive")
+            print(f"User is inactive")
             raise HTTPException(
                 status_code=403,
                 detail="Tài khoản đã bị vô hiệu hóa"
@@ -214,13 +214,13 @@ async def login(credentials: UserLogin):
         # Get password hash
         password_hash = user['password']
         
-        print(f"\n🔐 Password Hash Info:")
+        print(f"\n Password Hash Info:")
         print(f"   Hash type: {'BCRYPT' if password_hash.startswith('$2') else 'UNKNOWN'}")
         print(f"   Hash length: {len(password_hash)}")
         print(f"   Hash preview: {password_hash[:30]}...")
         
         # Verify password
-        print(f"\n🔓 Verifying password...")
+        print(f"\n Verifying password...")
         
         is_valid = False
         
@@ -229,47 +229,47 @@ async def login(credentials: UserLogin):
             is_valid = verify_password(credentials.password, password_hash)
             
             if not is_valid:
-                print(f"❌ Password verification FAILED")
+                print(f" Password verification FAILED")
                 print("="*70 + "\n")
                 raise HTTPException(
                     status_code=401,
                     detail="Tên đăng nhập hoặc mật khẩu không đúng"
                 )
             
-            print(f"✅ Password verification SUCCESS")
+            print(f" Password verification SUCCESS")
             
         else:
             # Plain text (for debugging only - NOT RECOMMENDED)
-            print(f"⚠️ WARNING: Plain text password detected")
+            print(f" WARNING: Plain text password detected")
             is_valid = (credentials.password == password_hash)
             
             if not is_valid:
-                print(f"❌ Plain text password mismatch")
+                print(f" Plain text password mismatch")
                 print("="*70 + "\n")
                 raise HTTPException(
                     status_code=401,
                     detail="Tên đăng nhập hoặc mật khẩu không đúng"
                 )
             
-            print(f"✅ Plain text password matched")
+            print(f"Plain text password matched")
         
-        # 🔥 FIX: Normalize role_name (Quản lý -> ADMIN)
+        #  FIX: Normalize role_name (Quản lý -> ADMIN)
         raw_role_name = user.get('role_name')
         user_role = normalize_role_name(raw_role_name, user['role_id'])
         
         print(f"\n👤 User Role Information:")
         print(f"   Role ID: {user['role_id']}")
         print(f"   Raw Role Name from DB: {raw_role_name}")
-        print(f"   🔥 Normalized Role: {user_role}")  # 👈 THIS IS WHAT WE RETURN
+        print(f"   Normalized Role: {user_role}")  #  THIS IS WHAT WE RETURN
         
         # Create JWT token with normalized role
         token = create_access_token(
             user_id=user['user_id'],
             username=user['username'],
-            role=user_role  # 👈 Now "ADMIN" not "Quản lý"
+            role=user_role  #  Now "ADMIN" not "Quản lý"
         )
         
-        print(f"\n🎫 Token Info:")
+        print(f"\nToken Info:")
         print(f"   Algorithm: {ALGORITHM}")
         print(f"   Expires in: {ACCESS_TOKEN_EXPIRE_MINUTES} minutes")
         print(f"   Token preview: {token[:40]}...")
@@ -285,7 +285,7 @@ async def login(credentials: UserLogin):
                 "userId": user['user_id'],
                 "username": user['username'],
                 "fullName": user.get('full_name', user['username']),
-                "role": user_role,  # 🔥 FIX: Now returns "ADMIN" not "Quản lý"
+                "role": user_role,  #  FIX: Now returns "ADMIN" not "Quản lý"
                 "roleId": user['role_id'],
                 "employeeId": user.get('employee_id'),
                 "position": user.get('position'),
@@ -294,8 +294,8 @@ async def login(credentials: UserLogin):
             "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60  # seconds
         }
         
-        print(f"\n✅ LOGIN SUCCESSFUL")
-        print(f"📤 Returning user.role: '{user_role}' (normalized)")
+        print(f"\n LOGIN SUCCESSFUL")
+        print(f"Returning user.role: '{user_role}' (normalized)")
         print(f"   Response keys: {list(response.keys())}")
         print("="*70 + "\n")
         
@@ -306,7 +306,7 @@ async def login(credentials: UserLogin):
         raise he
         
     except Exception as e:
-        print(f"\n❌ UNEXPECTED ERROR:")
+        print(f"\n UNEXPECTED ERROR:")
         print(f"   Type: {type(e).__name__}")
         print(f"   Message: {str(e)}")
         print("="*70 + "\n")
@@ -397,7 +397,7 @@ async def get_me(current_user = Depends(get_current_user)):
         if not user:
             raise HTTPException(status_code=404, detail="Không tìm thấy user")
         
-        # 🔥 FIX: Normalize role
+        # FIX: Normalize role
         raw_role_name = user.get('role_name')
         normalized_role = normalize_role_name(raw_role_name, user['role_id'])
         
@@ -407,7 +407,7 @@ async def get_me(current_user = Depends(get_current_user)):
                 "userId": user['user_id'],
                 "username": user['username'],
                 "fullName": user.get('full_name', user['username']),
-                "role": normalized_role,  # 🔥 Normalized
+                "role": normalized_role,  
                 "roleId": user['role_id'],
                 "position": user.get('position')
             }
@@ -474,7 +474,7 @@ def check_user(username: str):
             "username": user['username'],
             "role_id": user['role_id'],
             "role_name_raw": raw_role_name,
-            "role_name_normalized": normalized_role,  # 🔥 Show both versions
+            "role_name_normalized": normalized_role,
             "full_name": user.get('full_name'),
             "position": user.get('position'),
             "is_active": user.get('is_active'),

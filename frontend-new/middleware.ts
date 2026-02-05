@@ -8,20 +8,19 @@ const intlMiddleware = createMiddleware(routing);
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
 
-  // 1️⃣ Bỏ qua static & api
+  // Bỏ qua static & api
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname === '/favicon.ico'
   ) {
     return NextResponse.next();
-  }
-
-  // 2️⃣ CHẠY i18n TRƯỚC (QUAN TRỌNG)
+   }
+  //  CHẠY i18n TRƯỚC (QUAN TRỌNG)
   const intlResponse = intlMiddleware(req);
   if (intlResponse) return intlResponse;
 
-  // 3️⃣ Lấy locale từ pathname
+  // Lấy locale từ pathname
   const segments = pathname.split('/');
   const locale = routing.locales.includes(segments[1] as any)
     ? segments[1]
@@ -30,13 +29,13 @@ export async function middleware(req: NextRequest) {
   const pathnameWithoutLocale =
     pathname.replace(new RegExp(`^/${locale}`), '') || '/';
 
-  // 4️⃣ Public routes (không cần login)
+  //  Public routes (không cần login)
  const publicPaths = [
   '/login',
   '/goimon',
   '/auth/login',
 
-  // 👇 THÊM
+  // THÊM
   '/api/qr',
   '/qr'
 ];
@@ -51,7 +50,7 @@ if (
   return NextResponse.next();
 }
 
-  // 5️⃣ Auth check
+  //  Auth check
   const token = await getToken({ req });
 
   if (!token) {

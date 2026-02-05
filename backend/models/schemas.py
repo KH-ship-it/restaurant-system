@@ -121,12 +121,12 @@ class SuccessResponse(BaseModel):
     message: str
     data: Optional[dict] = None
 
-# ==================== Employee + User Create ====================
+# ==================== Employee + User Create ======
 
 class EmployeeCreateWithUser(BaseModel):
     username: str
     password: str
-    role: Optional [str]=None  # ✅ Role PHẢI được frontend gửi lên (OWNER, admin, KITCHEN, staff)
+    role: Optional [str]=None 
     full_name: str
     phone: Optional[str] = None
     position: Optional[str] = None
@@ -137,7 +137,7 @@ class EmployeeCreateWithUser(BaseModel):
             "example": {
                 "username": "nhanvien01",
                 "password": "123456",
-                "role": "KITCHEN",  # Hoặc: OWNER, admin, staff
+                "role": "KITCHEN",
                 "full_name": "Nguyễn Văn A",
                 "phone": "0901234567",
                 "position": "Đầu bếp",

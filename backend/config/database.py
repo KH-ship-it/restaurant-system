@@ -19,10 +19,10 @@ def get_db_connection():
     try:
         conn = psycopg2.connect(**DATABASE_CONFIG, cursor_factory=RealDictCursor)
 
-        # 🔥 DEBUG: kiểm tra backend đang kết nối DB nào
+        #  DEBUG: kiểm tra backend đang kết nối DB nào
         cur = conn.cursor()
         cur.execute("SELECT current_database();")
-        print("🔥 Backend connected to DB:", cur.fetchone())
+        print(" Backend connected to DB:", cur.fetchone())
         cur.close()
         return conn
     except Exception as e:

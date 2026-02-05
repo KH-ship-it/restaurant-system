@@ -21,15 +21,10 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
-// ========================================
-// REQUEST INTERCEPTOR - Add token EXCEPT for login
-// ========================================
-
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     //  CRITICAL: Do NOT add token for login endpoint
     const isLoginRequest = config.url?.includes('/auth/login');
-    
     if (isLoginRequest) {
       console.log(' Login request - NO TOKEN will be added');
       return config;
@@ -54,10 +49,6 @@ apiClient.interceptors.request.use(
   }
 );
 
-// ========================================
-// RESPONSE INTERCEPTOR - Handle errors globally
-// ========================================
-
 apiClient.interceptors.response.use(
   (response) => {
     // Success response - just return it
@@ -75,8 +66,6 @@ apiClient.interceptors.response.use(
       message: error.message,
       data: error.response?.data,
     });
-    
-    // Handle specific error codes
     if (status === 401) {
       // Unauthorized - Token invalid or expired
       console.error(' 401 Unauthorized');
@@ -112,29 +101,17 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-// ========================================
-// AUTH API
-// ========================================
-
 export const authAPI = {
-  /**
-   * Login user
-   */
+  
   login: (username: string, password: string) => {
     console.log('Attempting login for:', username);
     console.log(' API URL:', `${API_URL}/api/auth/login`);
     return apiClient.post('/api/auth/login', { username, password });
   },
-  
-  /**
-   * Get current user info
-   */
   getMe: () => {
     console.log('👤 Fetching current user info');
     return apiClient.get('/api/auth/me');
   },
-  
   /**
    * Logout user
    */
@@ -192,9 +169,6 @@ export function isAuthenticated(): boolean {
   return !!(token && user);
 }
 
-/**
- * Get current user from localStorage
- */
 export function getCurrentUser(): any | null {
   try {
     const userStr = localStorage.getItem('user');
@@ -206,10 +180,6 @@ export function getCurrentUser(): any | null {
   }
   return null;
 }
-
-/**
- * Get current token from localStorage
- */
 export function getToken(): string | null {
   return localStorage.getItem('access_token');
 }

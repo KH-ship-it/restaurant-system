@@ -23,14 +23,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Args:
         plain_password: Plain text password from user
         hashed_password: Hashed password from database
-    
     Returns:
         bool: True if password matches, False otherwise
     """
     try:
         return pwd_context.verify(plain_password, hashed_password)
     except Exception as e:
-        print(f"❌ Password verification error: {e}")
+        print(f" Password verification error: {e}")
         return False
 
 def get_password_hash(password: str) -> str:
@@ -45,7 +44,6 @@ def get_password_hash(password: str) -> str:
     """
     return pwd_context.hash(password)
 
-# ========================================
 # JWT TOKEN
 # ========================================
 
@@ -63,7 +61,6 @@ def create_access_token(user_id: int, username: str, role: str, expires_delta: O
         username: Username
         role: User role (OWNER, admin, CASHIER, etc.)
         expires_delta: Optional custom expiration time
-    
     Returns:
         str: JWT token
     """
@@ -86,7 +83,7 @@ def create_access_token(user_id: int, username: str, role: str, expires_delta: O
     # Encode JWT
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     
-    print(f"🎟️ Created token for user_id={user_id}, expires at {expire}")
+    print(f" Created token for user_id={user_id}, expires at {expire}")
     
     return encoded_jwt
 
@@ -131,7 +128,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         
         # Validate required fields
         if user_id is None or username is None:
-            print(f"❌ Token missing required fields: user_id={user_id}, username={username}")
+            print(f"Token missing required fields: user_id={user_id}, username={username}")
             raise credentials_exception
         
         # Check token expiration
@@ -139,14 +136,14 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         if exp:
             current_time = datetime.utcnow().timestamp()
             if current_time > exp:
-                print(f"❌ Token expired: exp={exp}, current={current_time}")
+                print(f" Token expired: exp={exp}, current={current_time}")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Token has expired",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
         
-        print(f"✅ Token verified for user: {username} (role: {role})")
+        print(f" Token verified for user: {username} (role: {role})")
         
         return {
             "user_id": user_id,
@@ -155,7 +152,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         }
         
     except JWTError as e:
-        print(f"❌ JWT decode error: {str(e)}")
+        print(f" JWT decode error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid authentication token: {str(e)}",
@@ -165,13 +162,11 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        print(f"❌ Unexpected error in get_current_user: {str(e)}")
-        raise credentials_exception
-
+        print(f" Unexpected error in get_current_user: {str(e)}")
+        raise credentials_exception 
 # ========================================
 # OPTIONAL USER (for endpoints that work with or without auth)
 # ========================================
-
 def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Optional[dict]:
     """
     Get current user if token is provided, otherwise return None
@@ -228,7 +223,7 @@ def decode_token_without_verification(token: str) -> dict:
         payload = jwt.decode(token, options={"verify_signature": False})
         return payload
     except Exception as e:
-        print(f"❌ Failed to decode token: {e}")
+        print(f" Failed to decode token: {e}")
         return {}
 
 # ========================================
@@ -264,4 +259,4 @@ if __name__ == "__main__":
     payload = decode_token_without_verification(token)
     print(f"Decoded payload: {payload}")
     
-    print("\n✅ All tests completed!")
+    print("\n All tests completed!")

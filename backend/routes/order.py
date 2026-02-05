@@ -27,7 +27,7 @@ class PublicOrderCreate(BaseModel):
 
 # ========================================
 # PUBLIC ENDPOINT - KHÁCH HÀNG ĐẶT MÓN QUA QR CODE
-# KHÔNG CẦN AUTHENTICATION ⭐
+# KHÔNG CẦN AUTHENTICATION 
 # ========================================
 
 @router.post("/public", status_code=status.HTTP_201_CREATED)
@@ -36,7 +36,7 @@ def create_public_order(
     conn=Depends(get_db)
 ):
     """
-    ✅ PUBLIC ENDPOINT - Khách hàng đặt món qua QR code
+     PUBLIC ENDPOINT - Khách hàng đặt món qua QR code
     KHÔNG CẦN TOKEN
     
     Request body:
@@ -89,14 +89,13 @@ def create_public_order(
             order_data.customer_name,
             order_data.total_amount,
             order_data.notes
-        ))
-        
+        ))        
         # Lấy order_id từ RETURNING
         result = cursor.fetchone()
         order_id = result['order_id']
         print(f"   ✓ Order created: #{order_id}")
         
-        # 3. 🔥 FIX: Thêm order items với ĐÚNG tên cột và subtotal
+        # FIX: Thêm order items với ĐÚNG tên cột và subtotal
         for item in order_data.items:
             subtotal = item.price * item.quantity  # Tính subtotal
             
@@ -133,7 +132,7 @@ def create_public_order(
         conn.commit()
         cursor.close()
         
-        print(f"✅ [PUBLIC ORDER] Bàn {order_data.table_number} đặt món thành công!")
+        print(f" [PUBLIC ORDER] Bàn {order_data.table_number} đặt món thành công!")
         
         return {
             "success": True,
@@ -155,7 +154,7 @@ def create_public_order(
     except Exception as e:
         conn.rollback()
         cursor.close()
-        print(f"❌ [PUBLIC ORDER ERROR]: {e}")
+        print(f" [PUBLIC ORDER ERROR]: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
