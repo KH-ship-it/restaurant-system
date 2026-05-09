@@ -6,10 +6,7 @@ import re
 import uuid
 
 router = APIRouter()
-
-
 # ==================== SCHEMAS ====================
-
 class BankAccountBase(BaseModel):
     """Base schema cho bank account"""
     bank_name: str
@@ -121,8 +118,6 @@ def check_duplicate(bank_name: str, account_number: str, exclude_id: str = None)
             account["id"] != exclude_id):
             return True
     return False
-
-
 # ==================== API ENDPOINTS ====================
 
 @router.get("/bank-accounts", response_model=List[BankAccountResponse])

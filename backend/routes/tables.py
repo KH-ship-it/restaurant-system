@@ -40,7 +40,7 @@ async def get_tables(current_user: dict = Depends(get_current_user)):
     cursor = conn.cursor()
     
     try:
-        # ✅ Try different possible table names
+        #  Try different possible table names
         table_names = ['tables', 'dining_tables', 'restaurant_tables']
         
         tables_data = None
@@ -63,23 +63,23 @@ async def get_tables(current_user: dict = Depends(get_current_user)):
                 
                 tables_data = cursor.fetchall()
                 used_table_name = table_name
-                print(f"✅ Found tables in '{table_name}'")
+                print(f" Found tables in '{table_name}'")
                 break
                 
             except Exception as e:
-                print(f"⚠️  Table '{table_name}' not found: {e}")
+                print(f"Table '{table_name}' not found: {e}")
                 continue
         
         if tables_data is None:
             # If no table found, return empty array
-            print("⚠️  No tables table found in database")
+            print("  No tables table found in database")
             return {
                 "success": True,
                 "data": [],
                 "message": "No tables table found in database. Please run database migration."
             }
         
-        print(f"✅ Loaded {len(tables_data)} tables from '{used_table_name}'")
+        print(f" Loaded {len(tables_data)} tables from '{used_table_name}'")
         
         return {
             "success": True,
@@ -87,7 +87,7 @@ async def get_tables(current_user: dict = Depends(get_current_user)):
         }
         
     except Exception as e:
-        print(f"❌ Error getting tables: {str(e)}")
+        print(f"Error getting tables: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error getting tables: {str(e)}"
@@ -141,7 +141,7 @@ async def create_table(
         new_table = cursor.fetchone()
         conn.commit()
         
-        print(f"✅ Created table {table.table_number}")
+        print(f" Created table {table.table_number}")
         
         return {
             "success": True,
@@ -153,7 +153,7 @@ async def create_table(
         raise
     except Exception as e:
         conn.rollback()
-        print(f"❌ Error creating table: {str(e)}")
+        print(f" Error creating table: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi tạo bàn: {str(e)}"
@@ -229,7 +229,7 @@ async def update_table(
         updated_table = cursor.fetchone()
         conn.commit()
         
-        print(f"✅ Updated table {table_number}")
+        print(f"Updated table {table_number}")
         
         return {
             "success": True,
@@ -241,7 +241,7 @@ async def update_table(
         raise
     except Exception as e:
         conn.rollback()
-        print(f"❌ Error updating table: {str(e)}")
+        print(f" Error updating table: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi cập nhật bàn: {str(e)}"
@@ -295,7 +295,7 @@ async def delete_table(
         
         conn.commit()
         
-        print(f"✅ Deleted table {table_number}")
+        print(f"Deleted table {table_number}")
         
         return {
             "success": True,
@@ -306,7 +306,7 @@ async def delete_table(
         raise
     except Exception as e:
         conn.rollback()
-        print(f"❌ Error deleting table: {str(e)}")
+        print(f" Error deleting table: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi xóa bàn: {str(e)}"
@@ -314,19 +314,17 @@ async def delete_table(
     finally:
         cursor.close()
         conn.close()
-
-# ========================================
 # GET TABLE BY NUMBER
+# =======================================
+# ========================================
+# PUBLIC ENDPOINT - GET TABLE STATUS (NO AUTH)
 # ========================================
 
-@router.get("/{table_number}")
-async def get_table(
-    table_number: int,
-    current_user: dict = Depends(get_current_user)
-):
+@router.get("/public/{table_number}")
+async def get_table_public(table_number: int):
     """
-    Get specific table by number
-    Requires authentication
+    Get table status - PUBLIC endpoint (no auth required)
+    Used by customer ordering page
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -334,13 +332,9 @@ async def get_table(
     try:
         cursor.execute("""
             SELECT 
-                table_id,
                 table_number as number,
                 capacity,
-                status,
-                qr_code,
-                created_at,
-                updated_at
+                status
             FROM tables
             WHERE table_number = %s
         """, (table_number,))
@@ -350,7 +344,7 @@ async def get_table(
         if not table:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Không tìm thấy bàn số {table_number}"
+                detail=f"Bàn số {table_number} không tồn tại"
             )
         
         return {
@@ -361,10 +355,88 @@ async def get_table(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error getting table: {str(e)}")
+        print(f"❌ Error getting table public: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi lấy thông tin bàn: {str(e)}"
+        )
+    finally:
+        cursor.close()
+        conn.close()
+
+# ========================================
+# PUBLIC ENDPOINT - UPDATE TABLE STATUS (NO AUTH)
+# ========================================
+
+@router.put("/public/{table_number}")
+async def update_table_status_public(
+    table_number: int,
+    table: TableUpdate
+):
+    """
+    Update table status - PUBLIC endpoint (no auth required)
+    Used by customer ordering page to mark table as OCCUPIED
+    
+    SECURITY NOTE: Only allows status updates, not other fields
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Check if table exists
+        cursor.execute(
+            "SELECT table_id FROM tables WHERE table_number = %s",
+            (table_number,)
+        )
+        
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Bàn số {table_number} không tồn tại"
+            )
+        
+        # Only allow status update for public endpoint
+        if table.status is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Yêu cầu phải có trường 'status'"
+            )
+        
+        # Validate status
+        valid_statuses = ["AVAILABLE", "OCCUPIED", "RESERVED"]
+        if table.status.upper() not in valid_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Trạng thái không hợp lệ. Chỉ chấp nhận: {', '.join(valid_statuses)}"
+            )
+        
+        # Update only status
+        cursor.execute("""
+            UPDATE tables 
+            SET status = %s, updated_at = NOW()
+            WHERE table_number = %s
+            RETURNING table_number as number, capacity, status, updated_at
+        """, (table.status.upper(), table_number))
+        
+        updated_table = cursor.fetchone()
+        conn.commit()
+        
+        print(f"✅ [PUBLIC] Updated table {table_number} status to {table.status}")
+        
+        return {
+            "success": True,
+            "message": f"Cập nhật trạng thái bàn {table_number} thành công",
+            "data": updated_table
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ Error updating table status (public): {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi cập nhật trạng thái bàn: {str(e)}"
         )
     finally:
         cursor.close()

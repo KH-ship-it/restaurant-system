@@ -1,10 +1,12 @@
-
-// FILE: lib/api.ts 
+// FILE: lib/api.ts
 
 import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosError } from 'axios';
-// API CONFIGURATION
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// ✅ Client-side → dùng proxy Next.js (tránh CORS + ngrok warning)
+// ✅ Server-side → gọi thẳng backend
+const API_URL = typeof window !== 'undefined'
+  ? '/api/proxy'
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
 
 console.log('API URL:', API_URL);
 
@@ -14,112 +16,82 @@ console.log('API URL:', API_URL);
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_URL,
-  timeout: 30000, // 30 seconds
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
-    'ngrok-skip-browser-warning': 'true', // For ngrok tunnels
+    // Không cần ngrok header ở đây vì proxy server-side tự thêm
   },
 });
 
+// ========================================
+// REQUEST INTERCEPTOR
+// ========================================
+
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    //  CRITICAL: Do NOT add token for login endpoint
     const isLoginRequest = config.url?.includes('/auth/login');
     if (isLoginRequest) {
-      console.log(' Login request - NO TOKEN will be added');
       return config;
     }
-    
-    // Get token from localStorage
-    const token = localStorage.getItem('access_token');
-    
+
+    const token = sessionStorage.getItem('access_token');
     if (token) {
-      // Add Authorization header
       config.headers.Authorization = `Bearer ${token}`;
-      console.log(' Added token to request:', config.url);
     } else {
-      console.warn(' No token found for request:', config.url);
+      console.warn('No token found for request:', config.url);
     }
-    
+
     return config;
   },
-  (error) => {
-    console.error(' Request interceptor error:', error);
+  (error) => Promise.reject(error)
+);
+
+// ========================================
+// RESPONSE INTERCEPTOR
+// ========================================
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    const status = error.response?.status;
+    const url = error.config?.url;
+
+    console.error('API Error:', { url, status, data: error.response?.data });
+
+    if (status === 401) {
+      const isLoginRequest = url?.includes('/auth/login');
+      if (isLoginRequest) return Promise.reject(error);
+
+      sessionStorage.removeItem('access_token');
+      sessionStorage.removeItem('user');
+
+      const isLoginPage = window.location.pathname.includes('/login');
+      if (!isLoginPage) {
+        const locale = window.location.pathname.startsWith('/vi') ? 'vi' : 'en';
+        window.location.href = `/${locale}/login`;
+      }
+    }
+
     return Promise.reject(error);
   }
 );
 
-apiClient.interceptors.response.use(
-  (response) => {
-    // Success response - just return it
-    console.log(' Response received:', response.config.url, response.status);
-    return response;
-  },
-  (error: AxiosError) => {
-    // Error response handling
-    const status = error.response?.status;
-    const url = error.config?.url;
-    
-    console.error(' API Error:', {
-      url,
-      status,
-      message: error.message,
-      data: error.response?.data,
-    });
-    if (status === 401) {
-      // Unauthorized - Token invalid or expired
-      console.error(' 401 Unauthorized');
-      
-      // CRITICAL: Do NOT redirect if this is a login request
-      const isLoginRequest = url?.includes('/auth/login');
-      
-      if (isLoginRequest) {
-        console.log(' Login failed - wrong credentials');
-        // Let the login page handle the error
-        return Promise.reject(error);
-      }
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      const isLoginPage = window.location.pathname.includes('/login');
-      
-      if (!isLoginPage) {
-        console.log('🔄 Redirecting to login page...');
-        const locale = window.location.pathname.startsWith('/vi') ? 'vi' : 'en';
-        window.location.href = `/${locale}/login`;
-      }
-    } else if (status === 403) {
-      // Forbidden - No permission
-      console.error(' 403 Forbidden - No permission');
-    } else if (status === 404) {
-      // Not Found
-      console.error(' 404 Not Found:', url);
-    } else if (status === 500) {
-      // Server Error
-      console.error(' 500 Internal Server Error');
-    }
-    
-    return Promise.reject(error);
-  }
-);
+// ========================================
+// AUTH API
+// ✅ Bỏ prefix /api/ — baseURL đã là /api/proxy
+//    /api/proxy + /auth/login → proxy forward → backend /api/auth/login ✅
+// ========================================
+
 export const authAPI = {
-  
-  login: (username: string, password: string) => {
-    console.log('Attempting login for:', username);
-    console.log(' API URL:', `${API_URL}/api/auth/login`);
-    return apiClient.post('/api/auth/login', { username, password });
-  },
-  getMe: () => {
-    console.log('👤 Fetching current user info');
-    return apiClient.get('/api/auth/me');
-  },
-  /**
-   * Logout user
-   */
+  login: (username: string, password: string) =>
+    apiClient.post('/auth/login', { username, password }),
+
+  getMe: () => apiClient.get('/auth/me'),
+
   logout: () => {
-    console.log('Logging out');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('rememberMe');
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('user');
+    sessionStorage.removeItem('rememberMe');
     return Promise.resolve({ data: { success: true } });
   },
 };
@@ -129,21 +101,86 @@ export const authAPI = {
 // ========================================
 
 export const employeesAPI = {
-  getAll: () => apiClient.get('/api/employees'),
-  getById: (id: number) => apiClient.get(`/api/employees/${id}`),
-  create: (data: any) => apiClient.post('/api/employees', data),
-  update: (id: number, data: any) => apiClient.put(`/api/employees/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/api/employees/${id}`),
+  getAll: ()                        => apiClient.get('/employees'),
+  getById: (id: number)             => apiClient.get(`/employees/${id}`),
+  create: (data: any)               => apiClient.post('/employees', data),
+  update: (id: number, data: any)   => apiClient.put(`/employees/${id}`, data),
+  delete: (id: number)              => apiClient.delete(`/employees/${id}`),
 };
 
 // ========================================
+// TABLES API
+// ========================================
 
 export const tablesAPI = {
-  getAll: () => apiClient.get('/api/tables'),
-  getById: (id: number) => apiClient.get(`/api/tables/${id}`),
-  create: (data: any) => apiClient.post('/api/tables', data),
-  update: (id: number, data: any) => apiClient.put(`/api/tables/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/api/tables/${id}`),
+  getAll: ()                        => apiClient.get('/tables'),
+  getById: (id: number)             => apiClient.get(`/tables/${id}`),
+  create: (data: any)               => apiClient.post('/tables', data),
+  update: (id: number, data: any)   => apiClient.put(`/tables/${id}`, data),
+  delete: (id: number)              => apiClient.delete(`/tables/${id}`),
+};
+
+// ========================================
+// INVENTORY API
+// ========================================
+
+export const inventoryAPI = {
+  // Dashboard & alerts
+  // Dashboard APIs (đúng theo Swagger)
+getDashboardStats: () => apiClient.get('/dashboard/stats'),
+getTodaySummary: () => apiClient.get('/dashboard/today'),
+getRevenue: () => apiClient.get('/dashboard/revenue'),
+getCategoryStats: () => apiClient.get('/dashboard/categories/stats'),
+getHourlyPerformance: () => apiClient.get('/dashboard/performance/hourly'),
+getOrdersChart: () => apiClient.get('/dashboard/orders/chart'),
+
+  // Nguyên liệu
+  getIngredients: (params?: {
+    search?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  })                                => apiClient.get('/inventory/ingredients', { params }),
+  getIngredientDetail: (id: number) => apiClient.get(`/inventory/ingredients/${id}`),
+  createIngredient: (data: any)     => apiClient.post('/inventory/ingredients', data),
+  updateIngredient: (id: number, data: any) => apiClient.put(`/inventory/ingredients/${id}`, data),
+  deleteIngredient: (id: number)    => apiClient.delete(`/inventory/ingredients/${id}`),
+  restock: (id: number, quantity: number, notes?: string) =>
+    apiClient.patch(`/inventory/ingredients/${id}/restock`, { quantity, notes }),
+  adjust: (id: number, actualStock: number, notes?: string) =>
+    apiClient.patch(`/inventory/ingredients/${id}/adjust`, { actual_stock: actualStock, notes }),
+
+  // Công thức
+  getRecipe: (itemId: number)       => apiClient.get(`/inventory/recipes/${itemId}`),
+  upsertRecipe: (itemId: number, ingredients: any[]) =>
+    apiClient.post(`/inventory/recipes/${itemId}`, { ingredients }),
+  deleteRecipeItem: (itemId: number, ingredientId: number) =>
+    apiClient.delete(`/inventory/recipes/${itemId}/${ingredientId}`),
+
+  // Trừ kho
+  deductPreview: (data: any)        => apiClient.post('/inventory/deduct/preview', data),
+  deductConfirm: (data: any)        => apiClient.post('/inventory/deduct/confirm', data),
+
+  // Giao dịch
+  getTransactions: (params?: {
+    ingredient_id?: number;
+    type?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
+  })                                => apiClient.get('/inventory/transactions', { params }),
+  getTodayTransactions: ()          => apiClient.get('/inventory/transactions/today'),
+  getTodayConsumption: ()           => apiClient.get('/inventory/consumption/today'),
+  getDailyCost: (params?: { from?: string; to?: string }) =>
+    apiClient.get('/inventory/cost/daily', { params }),
+
+  // Phiếu nhập hàng
+  getPurchaseRequests: (status?: string) =>
+    apiClient.get('/inventory/purchase-requests', { params: status ? { status } : undefined }),
+  createPurchaseRequest: (data: any) => apiClient.post('/inventory/purchase-requests', data),
+  updatePurchaseRequest: (id: number, data: any) =>
+    apiClient.patch(`/inventory/purchase-requests/${id}`, data),
 };
 
 // ========================================
@@ -151,35 +188,39 @@ export const tablesAPI = {
 // ========================================
 
 export const healthAPI = {
-  check: () => apiClient.get('/health'),
+  // /health không đi qua /api/ trên backend nên cần gọi thẳng
+  check: () => fetch(
+    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/health`,
+    { headers: { 'ngrok-skip-browser-warning': 'true' } }
+  ),
 };
 
 // ========================================
-// EXPORT DEFAULT CLIENT
+// EXPORT DEFAULT
 // ========================================
 
 export default apiClient;
 
-/**
- * Check if user is authenticated
- */
+// ========================================
+// AUTH HELPERS
+// ========================================
+
 export function isAuthenticated(): boolean {
-  const token = localStorage.getItem('access_token');
-  const user = localStorage.getItem('user');
+  const token = sessionStorage.getItem('access_token');
+  const user = sessionStorage.getItem('user');
   return !!(token && user);
 }
 
 export function getCurrentUser(): any | null {
   try {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      return JSON.parse(userStr);
-    }
-  } catch (error) {
-    console.error('Error parsing user data:', error);
+    const userStr = sessionStorage.getItem('user');
+    if (userStr) return JSON.parse(userStr);
+  } catch (e) {
+    console.error('Error parsing user:', e);
   }
   return null;
 }
+
 export function getToken(): string | null {
-  return localStorage.getItem('access_token');
+  return sessionStorage.getItem('access_token');
 }

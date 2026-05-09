@@ -93,8 +93,7 @@ def create_public_order(
         # Lấy order_id từ RETURNING
         result = cursor.fetchone()
         order_id = result['order_id']
-        print(f"   ✓ Order created: #{order_id}")
-        
+        print(f"   ✓ Order created: #{order_id}")        
         # FIX: Thêm order items với ĐÚNG tên cột và subtotal
         for item in order_data.items:
             subtotal = item.price * item.quantity  # Tính subtotal
@@ -367,6 +366,115 @@ def update_order_status(
         conn.rollback()
         cursor.close()
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/public/{order_id}")
+def delete_public_order(
+    order_id: str,  # ✅ Chú ý: order_id có thể là string từ localStorage
+    conn=Depends(get_db)
+):
+    """
+    🗑️ DELETE PUBLIC ORDER - Khách hàng/Nhân viên hủy đơn
+    KHÔNG CẦN AUTHENTICATION
+    
+    API: DELETE /api/orders/public/{order_id}
+    """
+    cursor = conn.cursor()
+    
+    try:
+        print(f"\n{'='*70}")
+        print(f"🗑️ [DELETE PUBLIC ORDER] Order ID: {order_id}")
+        print(f"{'='*70}")
+        
+        # 1️⃣ Kiểm tra đơn hàng có tồn tại không
+        cursor.execute("""
+            SELECT o.order_id, o.table_id, o.status, o.total_amount, t.table_number
+            FROM orders o
+            LEFT JOIN tables t ON o.table_id = t.table_id
+            WHERE o.order_id = %s
+        """, (order_id,))
+        
+        order = cursor.fetchone()
+        
+        if not order:
+            print(f"❌ Order #{order_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy đơn hàng #{order_id}"
+            )
+        
+        print(f"✅ Found order: Table {order['table_number']}, Status: {order['status']}")
+        
+        # 2️⃣ Kiểm tra trạng thái - chỉ cho phép hủy nếu chưa thanh toán
+        allowed_statuses = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'DELIVERED']
+        
+        if order['status'] not in allowed_statuses:
+            print(f"❌ Cannot cancel - status is {order['status']}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Không thể hủy đơn hàng ở trạng thái '{order['status']}'"
+            )
+        
+        # 3️⃣ XÓA HOÀN TOÀN đơn hàng (hoặc đánh dấu CANCELLED tùy logic)
+        # OPTION A: Xóa hẳn (khuyến nghị cho testing)
+        cursor.execute("DELETE FROM order_items WHERE order_id = %s", (order_id,))
+        print(f"✅ Deleted order items")
+        
+        cursor.execute("DELETE FROM kitchen_orders WHERE order_id = %s", (order_id,))
+        print(f"✅ Deleted kitchen order")
+        
+        cursor.execute("DELETE FROM orders WHERE order_id = %s", (order_id,))
+        print(f"✅ Deleted order record")
+        
+        # OPTION B: Đánh dấu CANCELLED (khuyến nghị cho production)
+        # cursor.execute("""
+        #     UPDATE orders 
+        #     SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+        #     WHERE order_id = %s
+        # """, (order_id,))
+        
+        # 4️⃣ Giải phóng bàn
+        if order['table_id']:
+            cursor.execute("""
+                UPDATE tables 
+                SET status = 'AVAILABLE', updated_at = CURRENT_TIMESTAMP
+                WHERE table_id = %s
+            """, (order['table_id'],))
+            print(f"✅ Table {order['table_number']} → AVAILABLE")
+        
+        conn.commit()
+        cursor.close()
+        
+        print(f"✅ [DELETE SUCCESS] Order #{order_id} deleted")
+        print(f"{'='*70}\n")
+        
+        return {
+            "success": True,
+            "message": f"Đã xóa đơn hàng #{order_id}",
+            "data": {
+                "order_id": order_id,
+                "table_number": order.get('table_number'),
+                "status": "DELETED"
+            }
+        }
+    
+    except HTTPException:
+        conn.rollback()
+        cursor.close()
+        raise
+    except Exception as e:
+        conn.rollback()
+        cursor.close()
+        print(f"❌ ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi xóa đơn hàng: {str(e)}"
+        )
+
+
+print("✅ Order DELETE endpoint added:")
+print("    DELETE /api/orders/public/{order_id} - Xóa đơn hàng (no auth)")
 
 @router.put("/{order_id}/cancel")
 def cancel_order(

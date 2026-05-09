@@ -17,15 +17,12 @@ ALGORITHM = "HS256"
 # ==================== AUTH DEPENDENCY ====================
 
 def verify_token(authorization: Optional[str] = Header(None)):
-    """Verify JWT token from Authorization header"""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
-    
     try:
         scheme, token = authorization.split()
         if scheme.lower() != 'bearer':
             raise HTTPException(status_code=401, detail="Invalid authorization scheme")
-        
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
@@ -79,14 +76,10 @@ class BankTransaction(BaseModel):
 # ==================== HELPER FUNCTIONS ====================
 
 def calculate_order_breakdown(subtotal) -> dict:
-    """Calculate tax and service charge"""
-    # Convert to float if Decimal (from PostgreSQL)
     subtotal = float(subtotal)
-    
-    tax = round(subtotal * 0.1, 2)  # 10% VAT
-    service_charge = round(subtotal * 0.05, 2)  # 5% service
+    tax = round(subtotal * 0.1, 2)
+    service_charge = round(subtotal * 0.05, 2)
     total = round(subtotal + tax + service_charge, 2)
-    
     return {
         'subtotal': float(subtotal),
         'tax': float(tax),
@@ -96,53 +89,36 @@ def calculate_order_breakdown(subtotal) -> dict:
     }
 
 def validate_payment_amount(total, paid, method: PaymentMethod) -> tuple[bool, str]:
-    """Validate payment amount"""
-    # Convert to float if Decimal
     total = float(total)
     paid = float(paid)
-    
     if method == PaymentMethod.CASH:
         if paid < total:
             return False, f"Insufficient payment. Need {total:.2f}, got {paid:.2f}"
         return True, "OK"
-    
-    tolerance = 5000  # 5,000 VND tolerance
+    tolerance = 5000
     if abs(paid - total) > tolerance:
         return False, f"Payment amount mismatch. Expected {total:.2f}, got {paid:.2f}"
-    
     return True, "OK"
 
 def verify_bank_transaction(transaction_id: str, expected_amount, conn) -> tuple[bool, Optional[str]]:
-    """Verify bank transaction in database"""
     cursor = conn.cursor()
-    
-    # Convert expected_amount to float if Decimal
     expected_amount = float(expected_amount)
-    
     cursor.execute("""
         SELECT transaction_id, amount, used_for_order_id, status
         FROM bank_transactions
         WHERE transaction_id = %s
     """, (transaction_id,))
-    
     transaction = cursor.fetchone()
     cursor.close()
-    
     if not transaction:
         return False, "Transaction not found in bank feed"
-    
     if transaction['used_for_order_id']:
         return False, f"Transaction already used for order #{transaction['used_for_order_id']}"
-    
     if transaction['status'] != 'PENDING':
         return False, f"Transaction status is {transaction['status']}, cannot use"
-    
-    # Convert transaction amount to float for comparison
     transaction_amount = float(transaction['amount'])
-    
     if abs(transaction_amount - expected_amount) > 5000:
         return False, f"Amount mismatch: Expected {expected_amount:.2f}, got {transaction_amount:.2f}"
-    
     return True, None
 
 # ==================== BANK ACCOUNTS ENDPOINTS ====================
@@ -152,14 +128,8 @@ def get_active_bank_accounts(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """Get active bank accounts for cashier payment"""
     cursor = conn.cursor()
-    
     try:
-        print(f"\n{'='*70}")
-        print(f" FETCHING ACTIVE BANK ACCOUNTS")
-        print(f"{'='*70}")
-        
         cursor.execute("""
             SELECT id, bank_name, bank_logo, account_number, 
                    account_holder, branch_name, is_active, 
@@ -168,30 +138,12 @@ def get_active_bank_accounts(
             WHERE is_active = TRUE AND status = 'active'
             ORDER BY created_at ASC
         """)
-        
         accounts = cursor.fetchall()
-        
-        print(f" Found {len(accounts)} active bank accounts")
-        for account in accounts:
-            print(f"  - {account['bank_name']}: {account['account_number']}")
-        
         cursor.close()
-        
-        print(f"{'='*70}\n")
-        
-        return {
-            "success": True,
-            "data": accounts,
-            "count": len(accounts)
-        }
-        
+        return {"success": True, "data": accounts, "count": len(accounts)}
     except Exception as e:
         cursor.close()
-        print(f" ERROR fetching bank accounts: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error fetching bank accounts: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error fetching bank accounts: {str(e)}")
 
 # ==================== PAYMENT ENDPOINTS ====================
 
@@ -200,14 +152,7 @@ def get_pending_orders(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """Get orders pending payment - FIXED to include PENDING status"""
     cursor = conn.cursor()
-    
-    print(f"\n{'='*70}")
-    print(f" FETCHING PENDING ORDERS")
-    print(f"{'='*70}")
-    
-    # FIXED: Include 'PENDING' status so newly created orders appear
     cursor.execute("""
         SELECT o.*, t.table_number, e.full_name as employee_name
         FROM orders o
@@ -219,11 +164,7 @@ def get_pending_orders(
         )
         ORDER BY o.created_at ASC
     """)
-    
     orders = cursor.fetchall()
-    print(f" Found {len(orders)} pending orders")
-    
-    # Get items for each order
     for order in orders:
         cursor.execute("""
             SELECT oi.*, m.item_name, m.image_url
@@ -232,21 +173,9 @@ def get_pending_orders(
             WHERE oi.order_id = %s
         """, (order['order_id'],))
         order['items'] = cursor.fetchall()
-        
-        # Add payment breakdown
         order['payment_breakdown'] = calculate_order_breakdown(order['total_amount'])
-        
-        print(f"  - Order #{order['order_id']}: Table {order['table_number']}, Status: {order['status']}, Total: {order['total_amount']}")
-    
     cursor.close()
-    
-    print(f"{'='*70}\n")
-    
-    return {
-        "success": True,
-        "data": orders,
-        "count": len(orders)
-    }
+    return {"success": True, "data": orders, "count": len(orders)}
 
 @router.get("/orders/{order_id}/details")
 def get_order_payment_details(
@@ -254,9 +183,7 @@ def get_order_payment_details(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """Get detailed order information for payment"""
     cursor = conn.cursor()
-    
     cursor.execute("""
         SELECT o.*, t.table_number, e.full_name as employee_name
         FROM orders o
@@ -264,45 +191,119 @@ def get_order_payment_details(
         LEFT JOIN employees e ON o.employee_id = e.employee_id
         WHERE o.order_id = %s
     """, (order_id,))
-    
     order = cursor.fetchone()
-    
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
-    # Check if already paid
     cursor.execute("""
         SELECT payment_id, payment_method, amount_paid, created_at
         FROM payments
         WHERE order_id = %s AND status = 'PAID'
     """, (order_id,))
-    
     existing_payment = cursor.fetchone()
-    
-    # Get order items
     cursor.execute("""
         SELECT oi.*, m.item_name, m.image_url, m.description
         FROM order_items oi
         JOIN menu_items m ON oi.item_id = m.item_id
         WHERE oi.order_id = %s
     """, (order_id,))
-    
     order['items'] = cursor.fetchall()
-    
-    # Calculate payment breakdown
     order['payment_breakdown'] = calculate_order_breakdown(order['total_amount'])
-    
-    # Add payment status
     order['can_payment'] = existing_payment is None
     order['payment_message'] = "Already paid" if existing_payment else "Ready for payment"
     order['existing_payment'] = existing_payment
-    
     cursor.close()
-    
-    return {
-        "success": True,
-        "data": order
-    }
+    return {"success": True, "data": order}
+
+
+# ==================== NEW: AUTO-MATCH BANK TRANSACTION ====================
+
+@router.get("/bank-feed/match/{order_id}")
+def find_matching_bank_transaction(
+    order_id: int,
+    current_user: dict = Depends(verify_token),
+    conn=Depends(get_db)
+):
+    """
+    Poll bank feed để tìm giao dịch khớp với đơn hàng.
+    Frontend gọi endpoint này định kỳ (mỗi 3s) sau khi hiển thị QR.
+    Match dựa trên: số tiền (±5000đ) + nội dung chuyển khoản có chứa "DH{order_id}"
+    """
+    cursor = conn.cursor()
+
+    try:
+        # Lấy thông tin đơn hàng
+        cursor.execute("""
+            SELECT o.order_id, o.total_amount, t.table_number
+            FROM orders o
+            JOIN tables t ON o.table_id = t.table_id
+            WHERE o.order_id = %s
+        """, (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        breakdown = calculate_order_breakdown(order['total_amount'])
+        expected_amount = breakdown['total']
+
+        print(f"\n🔍 [AUTO-MATCH] Searching for order #{order_id}")
+        print(f"   Expected amount: {expected_amount:,.0f}đ")
+        print(f"   Looking for description containing: DH{order_id}")
+
+        # Tìm giao dịch PENDING khớp với đơn hàng
+        # Match: số tiền trong khoảng ±5000đ VÀ nội dung chứa mã đơn
+        cursor.execute("""
+            SELECT transaction_id, amount, description, transaction_date, status
+            FROM bank_transactions
+            WHERE status = 'PENDING'
+              AND used_for_order_id IS NULL
+              AND ABS(amount - %s) <= 5000
+              AND (
+                description ILIKE %s
+                OR description ILIKE %s
+              )
+            ORDER BY transaction_date DESC
+            LIMIT 1
+        """, (
+            expected_amount,
+            f'%DH{order_id}%',         # VD: "DH204 Ban9"
+            f'%DH{order_id:05d}%',     # VD: "DH00204" (nếu backend format khác)
+        ))
+
+        matched = cursor.fetchone()
+
+        if matched:
+            print(f"   ✅ MATCH FOUND: {matched['transaction_id']} - {float(matched['amount']):,.0f}đ")
+            cursor.close()
+            return {
+                "success": True,
+                "matched": True,
+                "transaction": {
+                    "transaction_id": matched['transaction_id'],
+                    "amount": float(matched['amount']),
+                    "description": matched['description'],
+                    "transaction_date": matched['transaction_date'].isoformat() if matched['transaction_date'] else None,
+                }
+            }
+        else:
+            print(f"   ⏳ No match yet for order #{order_id}")
+            cursor.close()
+            return {
+                "success": True,
+                "matched": False,
+                "transaction": None
+            }
+
+    except HTTPException:
+        cursor.close()
+        raise
+    except Exception as e:
+        cursor.close()
+        print(f"❌ [AUTO-MATCH] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== PAYMENT ENDPOINT (FIXED) ====================
 
 @router.post("/payment")
 def process_payment(
@@ -312,14 +313,16 @@ def process_payment(
 ):
     """Process payment for an order"""
     cursor = conn.cursor()
-    
+
     try:
         print(f"\n{'='*70}")
         print(f" PROCESSING PAYMENT")
         print(f"{'='*70}")
         print(f"Order ID: {payment.order_id}")
         print(f"Method: {payment.payment_method}")
-        print(f"Amount: {payment.amount_paid:,.2f}")      
+        print(f"Amount: {payment.amount_paid:,.2f}")
+        print(f"Bank TX ID: {payment.bank_transaction_id}")
+
         # Get order details
         cursor.execute("""
             SELECT o.order_id, o.table_id, o.status, o.total_amount,
@@ -328,41 +331,53 @@ def process_payment(
             JOIN tables t ON o.table_id = t.table_id
             WHERE o.order_id = %s
         """, (payment.order_id,))
-        
         order = cursor.fetchone()
-        
+
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
-        
+
         if order['status'] == 'CANCELLED':
             raise HTTPException(status_code=400, detail="Cannot pay for cancelled order")
-        
+
         # Calculate breakdown
         breakdown = calculate_order_breakdown(order['total_amount'])
         total = breakdown['total']
-        
         print(f"Order Total: {total:,.2f}")
-        
+
         # Validate payment amount
         valid, message = validate_payment_amount(total, payment.amount_paid, payment.payment_method)
         if not valid:
             raise HTTPException(status_code=400, detail=message)
-        
-        print(" Amount validated")
-        
-        # Verify bank transaction if applicable
+        print("✓ Amount validated")
+
+        # ====================================================================
+        # FIX: Verify bank transaction chỉ khi có bank_transaction_id thực
+        # Nếu không có → cashier xác nhận thủ công (đã thấy khách chuyển khoản)
+        # ====================================================================
         if payment.payment_method in [PaymentMethod.BANK_TRANSFER, PaymentMethod.QR_CODE]:
-            if not payment.bank_transaction_id:
-                raise HTTPException(status_code=400, detail="Bank transaction ID required")
-            
-            valid, error = verify_bank_transaction(payment.bank_transaction_id, total, conn)
-            if not valid:
-                raise HTTPException(status_code=400, detail=f"Bank verification failed: {error}")
-            
-            print("Bank transaction verified")
-        
+            if payment.bank_transaction_id:
+                # Có mã GD → verify trong bank feed
+                valid, error = verify_bank_transaction(
+                    payment.bank_transaction_id, total, conn
+                )
+                if not valid:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Bank verification failed: {error}"
+                    )
+                print("✓ Bank transaction verified")
+            else:
+                # Không có mã GD → cashier xác nhận thủ công, bỏ qua verify
+                # Ghi chú vào notes để audit
+                print("⚠️  No bank_transaction_id provided - cashier manual confirmation")
+                if payment.notes:
+                    payment.notes = f"[Manual QR Confirm] {payment.notes}"
+                else:
+                    payment.notes = "[Manual QR Confirm] Cashier confirmed payment visually"
+
         # Calculate change (for cash)
         change = max(0, payment.amount_paid - total) if payment.payment_method == PaymentMethod.CASH else 0
+
         # Create payment record
         cursor.execute("""
             INSERT INTO payments (
@@ -382,10 +397,9 @@ def process_payment(
             payment.notes,
             current_user.get('employeeId')
         ))
-        
         payment_record = cursor.fetchone()
         print(f"✓ Payment record created: #{payment_record['payment_id']}")
-        
+
         # Mark bank transaction as used (if applicable)
         if payment.bank_transaction_id:
             cursor.execute("""
@@ -396,7 +410,7 @@ def process_payment(
                 WHERE transaction_id = %s
             """, (payment.order_id, payment.bank_transaction_id))
             print(f"✓ Bank transaction marked as used")
-        
+
         # Update order status
         cursor.execute("""
             UPDATE orders
@@ -404,10 +418,9 @@ def process_payment(
             WHERE order_id = %s
             RETURNING *
         """, (payment.order_id,))
-        
         updated_order = cursor.fetchone()
         print(f"✓ Order status updated to PAID")
-        
+
         # Update table status to empty
         cursor.execute("""
             UPDATE tables
@@ -415,21 +428,19 @@ def process_payment(
             WHERE table_id = %s
         """, (order['table_id'],))
         print(f"✓ Table {order['table_number']} released")
-        
+
         # Update kitchen order if exists
         cursor.execute("""
             UPDATE kitchen_orders
             SET status = 'SERVED', updated_at = CURRENT_TIMESTAMP
             WHERE order_id = %s
         """, (payment.order_id,))
-        
+
         conn.commit()
-        
-        print(f" PAYMENT SUCCESSFUL")
+        print(f"✅ PAYMENT SUCCESSFUL")
         print(f"{'='*70}\n")
-        
         cursor.close()
-        
+
         return {
             "success": True,
             "message": "Payment processed successfully",
@@ -445,7 +456,7 @@ def process_payment(
                 "breakdown": breakdown
             }
         }
-        
+
     except HTTPException:
         conn.rollback()
         cursor.close()
@@ -453,8 +464,11 @@ def process_payment(
     except Exception as e:
         conn.rollback()
         cursor.close()
-        print(f" ERROR: {e}")
+        print(f"❌ ERROR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== BANK FEED ENDPOINTS ====================
 
 @router.get("/bank-feed")
 def get_bank_feed(
@@ -463,37 +477,23 @@ def get_bank_feed(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """Get bank transactions for verification"""
-    cursor = conn.cursor()   
-    print(f"\n{'='*50}")
-    print(f" FETCHING BANK FEED")
-    print(f"Status filter: {status}")
-    print(f"{'='*50}")
-    
+    cursor = conn.cursor()
     query = """
-        SELECT transaction_id, amount, description, 
-               transaction_date, status, used_for_order_id,
-               created_at
+        SELECT transaction_id, amount, description,
+               transaction_date, status, used_for_order_id, created_at
         FROM bank_transactions
         WHERE 1=1
     """
     params = []
-    
     if status:
         query += " AND status = %s"
         params.append(status)
-    
     query += " ORDER BY transaction_date DESC, created_at DESC LIMIT %s"
     params.append(limit)
-    
     cursor.execute(query, params)
     transactions = cursor.fetchall()
-    
-    print(f" Found {len(transactions)} transactions")
-    
-    # Summary
     cursor.execute("""
-        SELECT 
+        SELECT
             COUNT(*) as total_count,
             SUM(amount) as total_amount,
             COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_count,
@@ -501,13 +501,8 @@ def get_bank_feed(
         FROM bank_transactions
         WHERE DATE(transaction_date) = CURRENT_DATE
     """)
-    
     summary = cursor.fetchone()
-    
     cursor.close()
-    
-    print(f"{'='*50}\n")
-    
     return {
         "success": True,
         "data": {
@@ -524,47 +519,29 @@ def verify_bank_transaction_endpoint(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """Verify a bank transaction matches an order"""
     cursor = conn.cursor()
-    
     cursor.execute("""
         SELECT order_id, total_amount, status
         FROM orders
         WHERE order_id = %s
     """, (order_id,))
-    
     order = cursor.fetchone()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
     breakdown = calculate_order_breakdown(order['total_amount'])
     total = breakdown['total']
-    
     valid, error = verify_bank_transaction(transaction_id, total, conn)
-    
     cursor.close()
-    
     if not valid:
-        return {
-            "success": False,
-            "message": error,
-            "amount_match": False
-        }
-    
-    return {
-        "success": True,
-        "message": "Transaction verified successfully",
-        "amount_match": True
-    }
+        return {"success": False, "message": error, "amount_match": False}
+    return {"success": True, "message": "Transaction verified successfully", "amount_match": True}
 
 @router.get("/transactions/today")
 def get_today_transactions(
     current_user: dict = Depends(verify_token),
     conn=Depends(get_db)
 ):
-    """Get today's completed transactions"""
     cursor = conn.cursor()
-    
     cursor.execute("""
         SELECT p.payment_id, p.order_id, p.amount_paid as total_amount,
                p.payment_method, p.change_given, p.created_at,
@@ -579,12 +556,9 @@ def get_today_transactions(
         AND DATE(p.created_at) = CURRENT_DATE
         ORDER BY p.created_at DESC
     """)
-    
     transactions = cursor.fetchall()
-    
-    # Calculate summary
     cursor.execute("""
-        SELECT 
+        SELECT
             COUNT(*) as transaction_count,
             SUM(amount_paid) as total_revenue,
             AVG(amount_paid) as avg_transaction,
@@ -595,11 +569,8 @@ def get_today_transactions(
         WHERE status = 'PAID'
         AND DATE(created_at) = CURRENT_DATE
     """)
-    
     summary = cursor.fetchone()
-    
     cursor.close()
-    
     return {
         "success": True,
         "data": {

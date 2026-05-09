@@ -40,7 +40,7 @@ def verify_token(authorization: Optional[str] = Header(None)):
 # ============================================================================
 
 POSITION_TO_ROLE = {
-    "Quản lý": "ADMIN",      
+    "Quản lý": "OWNER",      
     "Đầu bếp": "KITCHEN",    
     "Phục vụ": "STAFF",      
     "Thu ngân": "CASHIER",   
@@ -52,7 +52,7 @@ def get_role_id_from_position(cursor, position: str) -> int:
     # Map position to role_name
     role_name = POSITION_TO_ROLE.get(position, "STAFF")  # Default to STAFF
     
-    print(f"📍  Position: '{position}' → Role: '{role_name}'")
+    print(f" Position: '{position}' → Role: '{role_name}'")
     
     # Get role_id from database
     cursor.execute(
@@ -98,7 +98,7 @@ class EmployeeUpdate(BaseModel):
     class Config:
         extra = "ignore"
 
-# 🔑 NEW: Password Reset Model
+# NEW: Password Reset Model
 class PasswordReset(BaseModel):
     new_password: str
     
@@ -210,7 +210,7 @@ def get_employees(current_user: dict = Depends(verify_token)):
                 'is_active': row['is_active']
             })
 
-        print(f"✅ Loaded {len(employees)} employees")
+        print(f" Loaded {len(employees)} employees")
         print(f"{'='*70}\n")
 
         return {
@@ -221,7 +221,7 @@ def get_employees(current_user: dict = Depends(verify_token)):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f" ERROR: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -242,7 +242,7 @@ def create_employee(
     print(f"➕ [CREATE EMPLOYEE] REQUEST RECEIVED")
     print(f"{'='*70}")
     print(f"Current user: {current_user.get('username')} (role: {current_user.get('role')})")
-    print(f"\n📝 RAW DATA:")
+    print(f"\n RAW DATA:")
     print(f"  username: '{employee.username}'")
     print(f"  full_name: '{employee.full_name}'")
     print(f"  phone: '{employee.phone}'")
@@ -251,7 +251,7 @@ def create_employee(
     
     # Check permission
     if current_user.get("role") not in ["OWNER", "ADMIN"]:
-        print(f"❌ Permission denied")
+        print(f" Permission denied")
         raise HTTPException(
             status_code=403, 
             detail="Chỉ OWNER/ADMIN mới có quyền tạo nhân viên"
@@ -262,18 +262,18 @@ def create_employee(
     
     try:
         # Validate data
-        print(f"🔍 Validating data...")
+        print(f" Validating data...")
         validated_data = validate_employee_data(employee)
-        print(f"✅ Data validated")
+        print(f" Data validated")
         
         # Connect to database
-        print(f"\n🔌 Connecting to database...")
+        print(f"\n Connecting to database...")
         conn = get_db_connection()
         cursor = conn.cursor()
-        print(f"✅ Database connected")
+        print(f" Database connected")
         
         # Check username exists
-        print(f"\n🔍 Checking if username exists...")
+        print(f"\n Checking if username exists...")
         cursor.execute(
             "SELECT user_id, username FROM users WHERE username = %s", 
             (validated_data['username'],)
@@ -281,23 +281,23 @@ def create_employee(
         existing = cursor.fetchone()
         
         if existing:
-            print(f"❌ Username already exists: {existing['username']}")
+            print(f" Username already exists: {existing['username']}")
             raise HTTPException(
                 status_code=400, 
                 detail=f"Tên đăng nhập '{validated_data['username']}' đã tồn tại"
             )
         
-        print(f"✅ Username available")
+        print(f"Username available")
         
         # Hash password
-        print(f"\n🔐 Hashing password...")
+        print(f"\n Hashing password...")
         hashed_password = get_password_hash(validated_data['password'])
-        print(f"✅ Password hashed")
+        print(f"Password hashed")
         
         # GET ROLE_ID FROM POSITION
-        print(f"\n📍 Mapping position to role...")
+        print(f"\n Mapping position to role...")
         role_id = get_role_id_from_position(cursor, validated_data['position'])
-        print(f"✅ Position '{validated_data['position']}' → role_id: {role_id}")
+        print(f" Position '{validated_data['position']}' → role_id: {role_id}")
         
         # Create user account
         print(f"\n👤 Creating user account...")
@@ -313,15 +313,15 @@ def create_employee(
             raise Exception("Failed to create user - no user_id returned")
         
         user_id = user_result['user_id']
-        print(f"✅ User created - User ID: {user_id}")
+        print(f" User created - User ID: {user_id}")
         
         # Create employee record
-        print(f"\n👔 Creating employee record...")
+        print(f"\n Creating employee record...")
         cursor.execute("""
             INSERT INTO employees (user_id, full_name, phone, position, hire_date)
             VALUES (%s, %s, %s, %s, CURRENT_DATE)
             RETURNING employee_id
-        """, (
+        """,(
             user_id, 
             validated_data['full_name'], 
             validated_data['phone'], 
@@ -334,12 +334,12 @@ def create_employee(
             raise Exception("Failed to create employee - no employee_id returned")
         
         employee_id = emp_result['employee_id']
-        print(f"✅ Employee created - Employee ID: {employee_id}")
+        print(f" Employee created - Employee ID: {employee_id}")
         
         # Commit transaction
-        print(f"\n💾 Committing transaction...")
+        print(f"\n Committing transaction...")
         conn.commit()
-        print(f"✅ Transaction committed")
+        print(f" Transaction committed")
         
         result = {
             "success": True,
@@ -356,7 +356,7 @@ def create_employee(
         }
         
         print(f"\n{'='*70}")
-        print(f"✅ CREATE EMPLOYEE SUCCESS")
+        print(f" CREATE EMPLOYEE SUCCESS")
         print(f"   Employee: {validated_data['full_name']}")
         print(f"   Position: {validated_data['position']}")
         print(f"   Role: {POSITION_TO_ROLE[validated_data['position']]}")
@@ -367,16 +367,16 @@ def create_employee(
     except HTTPException as he:
         if conn:
             conn.rollback()
-            print(f"🔄 Transaction rolled back (HTTP error)")
+            print(f" Transaction rolled back (HTTP error)")
         raise he
         
     except Exception as e:
         if conn:
             conn.rollback()
-            print(f"🔄 Transaction rolled back")
+            print(f" Transaction rolled back")
         
         print(f"\n{'='*70}")
-        print(f"❌ CREATE EMPLOYEE ERROR")
+        print(f" CREATE EMPLOYEE ERROR")
         print(f"{'='*70}")
         print(f"Error: {str(e)}")
         import traceback
@@ -471,7 +471,7 @@ def update_employee(
         
         # IF POSITION CHANGED, UPDATE ROLE IN USERS TABLE
         if employee.position and employee.position != old_position:
-            print(f"\n📍 Position changed: '{old_position}' → '{employee.position}'")
+            print(f"\n Position changed: '{old_position}' → '{employee.position}'")
             
             new_role_id = get_role_id_from_position(cursor, employee.position)
             
@@ -481,11 +481,11 @@ def update_employee(
                 WHERE user_id = %s
             """, (new_role_id, user_id))
             
-            print(f"✅ Role updated to match new position")
+            print(f" Role updated to match new position")
         
         conn.commit()
         
-        print(f"✅ Updated employee ID: {employee_id}")
+        print(f" Updated employee ID: {employee_id}")
         print(f"{'='*70}\n")
         
         return {
@@ -500,7 +500,7 @@ def update_employee(
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"❌ UPDATE ERROR: {e}")
+        print(f" UPDATE ERROR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if cursor:
@@ -509,7 +509,7 @@ def update_employee(
             conn.close()
 
 # ============================================================================
-# 🔑 NEW: PASSWORD RESET ENDPOINT
+#  NEW: PASSWORD RESET ENDPOINT
 # ============================================================================
 
 @router.post("/{employee_id}/reset-password")
@@ -521,7 +521,7 @@ def reset_employee_password(
     """Reset employee password - OWNER/ADMIN only"""
     
     print(f"\n{'='*70}")
-    print(f"🔑 [RESET PASSWORD] Employee ID: {employee_id}")
+    print(f" [RESET PASSWORD] Employee ID: {employee_id}")
     print(f"{'='*70}")
     
     # Only OWNER/ADMIN can reset passwords
@@ -573,9 +573,9 @@ def reset_employee_password(
             )
         
         # Hash new password
-        print(f"🔐 Hashing new password...")
+        print(f" Hashing new password...")
         hashed_password = get_password_hash(password_data.new_password)
-        print(f"✅ Password hashed")
+        print(f" Password hashed")
         
         # Update password
         cursor.execute("""
@@ -586,7 +586,7 @@ def reset_employee_password(
         
         conn.commit()
         
-        print(f"✅ Password reset for: {full_name} ({username})")
+        print(f" Password reset for: {full_name} ({username})")
         print(f"{'='*70}\n")
         
         return {
@@ -601,7 +601,7 @@ def reset_employee_password(
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"❌ RESET PASSWORD ERROR: {e}")
+        print(f" RESET PASSWORD ERROR: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -661,7 +661,6 @@ def delete_employee(
                 status_code=400,
                 detail="Không thể xóa chính mình"
             )
-        
         # Delete employee first (foreign key)
         cursor.execute("DELETE FROM employees WHERE employee_id = %s", (employee_id,))
         
